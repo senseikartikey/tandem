@@ -1,0 +1,43 @@
+# Builds and runs @tandem/server (the WS relay + SQLite persistence) --
+# this is the ONE image both the self-hosted deployment and the author's
+# public hosted instance run from, per the architecture decision that they
+# must not diverge into two implementations. apps/web is a separate static
+# build, deliberately decoupled from this image (see the root README).
+#
+# Copies the whole workspace rather than trying to hand-pick a minimal
+# subset: pnpm's node_modules layout for a workspace is symlink-heavy
+# (apps/server/node_modules/@tandem/doc-schema -> ../../../packages/doc-schema),
+# and those links only resolve correctly with the full workspace root
+# present -- a hand-trimmed copy risks silently broken links at runtime.
+# Trades a larger image for one that's simple to reason about and verify.
+
+FROM node:22-slim AS base
+RUN corepack enable
+WORKDIR /repo
+
+FROM base AS deps
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+COPY packages/doc-schema/package.json packages/doc-schema/package.json
+COPY apps/server/package.json apps/server/package.json
+COPY apps/web/package.json apps/web/package.json
+# better-sqlite3 needs a native build toolchain at install time.
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
+	&& rm -rf /var/lib/apt/lists/*
+RUN pnpm install --frozen-lockfile
+
+FROM deps AS build
+COPY packages/doc-schema packages/doc-schema
+COPY apps/server apps/server
+RUN pnpm --filter @tandem/doc-schema build
+RUN pnpm --filter @tandem/server build
+
+FROM node:22-slim AS runtime
+WORKDIR /repo
+COPY --from=build /repo ./
+ENV NODE_ENV=production
+ENV PORT=1234
+ENV DATABASE_PATH=/data/tandem.sqlite
+VOLUME ["/data"]
+EXPOSE 1234
+WORKDIR /repo/apps/server
+CMD ["node", "dist/index.js"]

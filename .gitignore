@@ -1,0 +1,20 @@
+node_modules/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+.env
+.env.local
+.DS_Store
+
+# SvelteKit
+.svelte-kit/
+
+# Capacitor generated platform projects
+apps/web/ios/
+apps/web/android/
+
+# SQLite data
+*.sqlite
+*.sqlite-journal
+data/

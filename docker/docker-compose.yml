@@ -1,0 +1,27 @@
+# Reference self-host deployment: one server container + one named volume
+# for the SQLite file. Point your own build of apps/web at this server via
+# VITE_SYNC_SERVER_URL (see apps/web/README or the root README).
+#
+# Usage: docker compose -f docker/docker-compose.yml up -d
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+    ports:
+      - "1234:1234"
+    environment:
+      PORT: 1234
+      DATABASE_PATH: /data/tandem.sqlite
+      # MAX_ROOM_BYTES: "5242880"
+    volumes:
+      - tandem-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:1234/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  tandem-data:

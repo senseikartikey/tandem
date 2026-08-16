@@ -1,0 +1,54 @@
+:root {
+	color-scheme: dark;
+	--bg: #0b0f14;
+	--bg-raised: #131a22;
+	--border: #263140;
+	--text: #e7edf3;
+	--text-dim: #8ea0b3;
+	--accent: #4fd1c5;
+	--danger: #e5677a;
+	font-size: 16px;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+	background: var(--bg);
+	color: var(--text);
+	font-family:
+		system-ui,
+		-apple-system,
+		"Segoe UI",
+		Roboto,
+		sans-serif;
+	/* Avoids the double-tap-to-zoom delay on mobile, and disables text-select
+	callouts on long-press for a more app-like feel on checklist items. */
+	touch-action: manipulation;
+	-webkit-tap-highlight-color: transparent;
+}
+
+body {
+	max-width: 560px;
+	margin-inline: auto;
+	min-height: 100dvh;
+	padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+		env(safe-area-inset-left);
+}
+
+button {
+	font: inherit;
+	color: inherit;
+}
+
+input {
+	font: inherit;
+}
+
+a {
+	color: var(--accent);
+}
