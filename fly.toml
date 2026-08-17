@@ -1,0 +1,37 @@
+# Fly.io deployment for @tandem/server -- the WS relay + SQLite persistence.
+# Uses docker/Dockerfile.server directly (the same image the self-host
+# Docker Compose setup builds), so this deployment and self-hosters run
+# identical server code. The persistent volume below is why Fly.io was
+# chosen over Render's free tier, which has no persistent disk on the free
+# plan -- SQLite data here survives restarts/redeploys.
+app = "tandem-sync"
+primary_region = "iad"
+
+[build]
+  dockerfile = "docker/Dockerfile.server"
+
+[env]
+  PORT = "1234"
+  DATABASE_PATH = "/data/tandem.sqlite"
+
+[[mounts]]
+  source = "tandem_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 1234
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

@@ -1,0 +1,6 @@
+{
+	"installCommand": "pnpm install --frozen-lockfile",
+	"buildCommand": "pnpm --filter @tandem/doc-schema build && pnpm --filter @tandem/web build",
+	"outputDirectory": "apps/web/build",
+	"rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}

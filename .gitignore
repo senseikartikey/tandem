@@ -18,3 +18,5 @@ apps/web/android/
 *.sqlite
 *.sqlite-journal
 data/
+
+.vercel
