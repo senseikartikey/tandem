@@ -3,12 +3,13 @@
 	import { goto, replaceState } from "$app/navigation";
 	import { mintShortCode } from "$lib/api";
 	import { buildInviteLink, inviteQrCodeDataUrl } from "$lib/invite";
-	import { getDeviceLabel, rememberHousehold } from "$lib/local-households";
+	import { rememberHousehold } from "$lib/local-households";
 	import { createHouseholdSession, type HouseholdSession } from "$lib/sync/household-session";
 	import { cacheSession, getOrJoinSession } from "$lib/sync/session-cache";
 	import type { ActivitySnapshot, HouseholdSnapshot } from "@tandem/doc-schema";
 	import { onDestroy, onMount } from "svelte";
 	import type { PageProps } from "./$types";
+	import YourName from "$lib/components/YourName.svelte";
 
 	// $app/state's `page.params` is typed broadly across every route (so
 	// individual keys come back as `string | undefined`); this route's
@@ -31,11 +32,11 @@
 	onMount(async () => {
 		const newName = page.url.searchParams.get("new");
 		if (newName) {
-			session = await createHouseholdSession(roomId, newName, getDeviceLabel());
+			session = await createHouseholdSession(roomId, newName);
 			cacheSession(roomId, session);
 			replaceState(`/h/${roomId}`, {});
 		} else {
-			session = await getOrJoinSession(roomId, getDeviceLabel());
+			session = await getOrJoinSession(roomId);
 		}
 
 		unsubscribe = session.household.subscribe(({ household: snapshot, activity: entries }) => {
@@ -110,6 +111,8 @@
 
 	{#if household}
 		<h1>{household.name}</h1>
+
+		<YourName />
 
 		<div class="lists">
 			{#each household.lists.filter((l) => !l.archived) as list, i (list.id)}

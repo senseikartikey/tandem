@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { getDeviceLabel } from "$lib/local-households";
 	import type { HouseholdSession } from "$lib/sync/household-session";
 	import { getOrJoinSession } from "$lib/sync/session-cache";
 	import type { ActivitySnapshot, HouseholdSnapshot, ListSnapshot } from "@tandem/doc-schema";
@@ -31,7 +30,7 @@
 		// Reuses the cached session from the parent /h/[roomId] page if this
 		// household is already open (the common case -- you navigate here from
 		// there); joins fresh otherwise (e.g. a deep link straight to a list).
-		session = await getOrJoinSession(roomId, getDeviceLabel());
+		session = await getOrJoinSession(roomId);
 		unsubscribe = session.household.subscribe(({ household: snapshot, activity: entries }) => {
 			household = snapshot;
 			activity = entries;

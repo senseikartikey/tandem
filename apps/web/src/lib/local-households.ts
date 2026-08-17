@@ -41,6 +41,15 @@ export function forgetHousehold(roomId: string): void {
 
 const DEVICE_LABEL_KEY = "tandem:device-label";
 
+// Unlike getDeviceLabel(), never auto-generates a fallback -- used by the UI
+// to tell "never set a real name yet" apart from "already has one," so it
+// can prompt for a name on first visit instead of silently normalizing an
+// unset label into a random-looking one before the user ever sees it.
+export function getStoredDeviceLabel(): string | null {
+  if (!hasLocalStorage()) return null;
+  return localStorage.getItem(DEVICE_LABEL_KEY);
+}
+
 export function getDeviceLabel(): string {
   if (!hasLocalStorage()) return "device";
   let label = localStorage.getItem(DEVICE_LABEL_KEY);

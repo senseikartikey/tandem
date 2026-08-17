@@ -3,7 +3,6 @@
 	import { parseInviteFragment } from "$lib/invite";
 	import { rememberHousehold } from "$lib/local-households";
 	import { joinHouseholdSession } from "$lib/sync/household-session";
-	import { getDeviceLabel } from "$lib/local-households";
 	import { onMount } from "svelte";
 
 	let status = $state<"resolving" | "naming" | "error">("resolving");
@@ -21,7 +20,7 @@
 		roomId = parsed.roomId;
 
 		try {
-			const session = await joinHouseholdSession(roomId, getDeviceLabel());
+			const session = await joinHouseholdSession(roomId);
 			// household.subscribe() calls its callback synchronously on the
 			// initial subscribe (see household-store.ts) -- if the data is
 			// already available (e.g. another tab of this same browser already

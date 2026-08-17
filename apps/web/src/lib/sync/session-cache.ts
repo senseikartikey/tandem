@@ -7,10 +7,10 @@ import { joinHouseholdSession, type HouseholdSession } from "./household-session
 
 const cache = new Map<string, Promise<HouseholdSession>>();
 
-export function getOrJoinSession(roomId: string, deviceLabel: string): Promise<HouseholdSession> {
+export function getOrJoinSession(roomId: string): Promise<HouseholdSession> {
   let existing = cache.get(roomId);
   if (!existing) {
-    existing = joinHouseholdSession(roomId, deviceLabel);
+    existing = joinHouseholdSession(roomId);
     cache.set(roomId, existing);
   }
   return existing;

@@ -9,6 +9,7 @@
 		type KnownHousehold,
 	} from "$lib/local-households";
 	import { onMount } from "svelte";
+	import YourName from "$lib/components/YourName.svelte";
 
 	let households = $state<KnownHousehold[]>([]);
 	let newHouseholdName = $state("");
@@ -95,6 +96,8 @@
 		<h1>tandem</h1>
 		<p class="tagline">shared lists that work even when you're offline.</p>
 	</div>
+
+	<YourName />
 
 	{#if households.length > 0}
 		<section>

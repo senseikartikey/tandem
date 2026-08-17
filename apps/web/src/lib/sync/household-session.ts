@@ -1,4 +1,5 @@
 import * as schema from "@tandem/doc-schema";
+import { getDeviceLabel } from "$lib/local-households";
 import { connectHousehold } from "./provider.js";
 import { householdStore, type HouseholdStoreValue, type Readable } from "./household-store.js";
 
@@ -17,21 +18,24 @@ export interface HouseholdSession {
   destroy(): void;
 }
 
-function wrapSession(roomId: string, sync: Awaited<ReturnType<typeof connectHousehold>>, deviceLabel: string): HouseholdSession {
+// deviceLabel is read fresh on every call, not captured once at session
+// open -- otherwise renaming yourself mid-session (see YourName.svelte)
+// wouldn't take effect until a full page reload re-created the session.
+function wrapSession(roomId: string, sync: Awaited<ReturnType<typeof connectHousehold>>): HouseholdSession {
   return {
     roomId,
     household: householdStore(sync.doc),
-    createList: (name) => schema.createList(sync.doc, name, deviceLabel),
-    renameList: (listId, name) => schema.renameList(sync.doc, listId, name, deviceLabel),
-    archiveList: (listId) => schema.archiveList(sync.doc, listId, deviceLabel),
-    unarchiveList: (listId) => schema.unarchiveList(sync.doc, listId, deviceLabel),
-    addItem: (listId, text) => schema.addItem(sync.doc, listId, text, deviceLabel),
+    createList: (name) => schema.createList(sync.doc, name, getDeviceLabel()),
+    renameList: (listId, name) => schema.renameList(sync.doc, listId, name, getDeviceLabel()),
+    archiveList: (listId) => schema.archiveList(sync.doc, listId, getDeviceLabel()),
+    unarchiveList: (listId) => schema.unarchiveList(sync.doc, listId, getDeviceLabel()),
+    addItem: (listId, text) => schema.addItem(sync.doc, listId, text, getDeviceLabel()),
     setItemText: (listId, itemId, text) =>
-      schema.setItemText(sync.doc, listId, itemId, text, deviceLabel),
+      schema.setItemText(sync.doc, listId, itemId, text, getDeviceLabel()),
     setItemChecked: (listId, itemId, checked) =>
-      schema.setItemChecked(sync.doc, listId, itemId, checked, deviceLabel),
-    archiveItem: (listId, itemId) => schema.archiveItem(sync.doc, listId, itemId, deviceLabel),
-    unarchiveItem: (listId, itemId) => schema.unarchiveItem(sync.doc, listId, itemId, deviceLabel),
+      schema.setItemChecked(sync.doc, listId, itemId, checked, getDeviceLabel()),
+    archiveItem: (listId, itemId) => schema.archiveItem(sync.doc, listId, itemId, getDeviceLabel()),
+    unarchiveItem: (listId, itemId) => schema.unarchiveItem(sync.doc, listId, itemId, getDeviceLabel()),
     destroy: () => sync.destroy(),
   };
 }
@@ -42,23 +46,16 @@ function wrapSession(roomId: string, sync: Awaited<ReturnType<typeof connectHous
 // already exists elsewhere and simply hasn't synced to this device yet, an
 // unconditional write here would race the real, already-established meta
 // (see initializeHouseholdMeta's docs in doc-schema).
-export async function createHouseholdSession(
-  roomId: string,
-  name: string,
-  deviceLabel: string,
-): Promise<HouseholdSession> {
+export async function createHouseholdSession(roomId: string, name: string): Promise<HouseholdSession> {
   const sync = await connectHousehold(roomId);
   schema.initializeHouseholdMeta(sync.doc, name);
-  return wrapSession(roomId, sync, deviceLabel);
+  return wrapSession(roomId, sync);
 }
 
 // For joining an existing household via an invite link/short code. Never
 // initializes meta -- the real data arrives via IndexedDB (if previously
 // joined) or the sync server (must be online at least once to receive it).
-export async function joinHouseholdSession(
-  roomId: string,
-  deviceLabel: string,
-): Promise<HouseholdSession> {
+export async function joinHouseholdSession(roomId: string): Promise<HouseholdSession> {
   const sync = await connectHousehold(roomId);
-  return wrapSession(roomId, sync, deviceLabel);
+  return wrapSession(roomId, sync);
 }
