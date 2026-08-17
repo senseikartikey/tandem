@@ -1,5 +1,7 @@
 # Tandem
 
+**Live**: [web-navy-nine-12.vercel.app](https://web-navy-nine-12.vercel.app) — sync server on [Fly.io](https://tandem-sync.fly.dev/healthz).
+
 Shared lists (groceries, chores, packing lists, to-dos) that are **genuinely
 offline-first** — not just "installable." Add or check off an item with zero
 signal, and it merges correctly with everyone else's changes the moment
@@ -76,6 +78,13 @@ serve the static output from any host (Vercel, Netlify, Cloudflare Pages,
 nginx, whatever you like — `apps/web`'s build is intentionally decoupled
 from how `apps/server` is hosted).
 
+The live instance above runs the exact same setup: `apps/server` on Fly.io
+via `fly.toml` (chosen specifically because Render's free tier has no
+persistent disk — `apps/server` needs a real volume for the SQLite file,
+which Fly's free allowance includes), `apps/web` on Vercel via the root
+`vercel.json` (deployed from the repo root, not `apps/web` alone, since the
+build needs the pnpm workspace context to resolve `@tandem/doc-schema`).
+
 ## Mobile
 
 `apps/web` is an installable PWA out of the box (manifest + a native
@@ -115,8 +124,6 @@ pnpm --filter @tandem/web check
   up yet).
 - Actual App Store / Play Store submission (needs the maintainer's own
   developer accounts).
-- A public hosted instance (self-hosting works today; a "just use it,
-  no server setup" hosted option is a follow-up).
 - Rich item metadata (quantity, category, notes), list templates, push
   notifications, drag-and-drop reordering UI (the underlying fractional-index
   data model already supports it).
