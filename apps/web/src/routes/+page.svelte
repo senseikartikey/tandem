@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from "$app/navigation";
-	import { createRoom, resolveShortCode } from "$lib/api";
+	import { createRoom, describeApiError, resolveShortCode } from "$lib/api";
 	import { parseInviteFragment } from "$lib/invite";
 	import {
 		forgetHousehold,
@@ -31,7 +31,7 @@
 			rememberHousehold(roomId, name);
 			await goto(`/h/${roomId}?new=${encodeURIComponent(name)}`);
 		} catch (e) {
-			error = e instanceof Error ? e.message : "Failed to create household";
+			error = describeApiError(e, "failed to create household");
 		} finally {
 			busy = false;
 		}
@@ -46,7 +46,7 @@
 			const roomId = await resolveShortCode(code);
 			await goto(`/join#room=${roomId}`);
 		} catch (e) {
-			error = e instanceof Error ? e.message : "Code not found or expired";
+			error = describeApiError(e, "code not found or expired");
 		} finally {
 			busy = false;
 		}

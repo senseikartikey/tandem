@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from "$app/state";
 	import { goto, replaceState } from "$app/navigation";
-	import { mintShortCode } from "$lib/api";
+	import { describeApiError, mintShortCode } from "$lib/api";
 	import { buildInviteLink, inviteQrCodeDataUrl } from "$lib/invite";
 	import { rememberHousehold } from "$lib/local-households";
 	import { createHouseholdSession, type HouseholdSession } from "$lib/sync/household-session";
@@ -93,7 +93,7 @@
 			inviteCode = shortCode;
 			inviteQr = await inviteQrCodeDataUrl(inviteLink);
 		} catch (e) {
-			inviteError = e instanceof Error ? e.message : "Couldn't create an invite code";
+			inviteError = describeApiError(e, "couldn't create an invite code");
 		}
 	}
 
