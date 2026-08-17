@@ -64,7 +64,7 @@ describe("real WS relay + SQLite persistence", () => {
     await waitForSync(providerB);
 
     addItem(docA, listId, "Milk", "alice");
-    setItemChecked(docB, listId, addItem(docB, listId, "Eggs", "bob"), true);
+    setItemChecked(docB, listId, addItem(docB, listId, "Eggs", "bob"), true, "bob");
 
     await new Promise((r) => setTimeout(r, 300)); // let the relay propagate
 

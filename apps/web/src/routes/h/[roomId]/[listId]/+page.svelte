@@ -2,9 +2,10 @@
 	import { getDeviceLabel } from "$lib/local-households";
 	import type { HouseholdSession } from "$lib/sync/household-session";
 	import { getOrJoinSession } from "$lib/sync/session-cache";
-	import type { HouseholdSnapshot, ListSnapshot } from "@tandem/doc-schema";
+	import type { ActivitySnapshot, HouseholdSnapshot, ListSnapshot } from "@tandem/doc-schema";
 	import { onDestroy, onMount } from "svelte";
 	import type { PageProps } from "./$types";
+	import ActivityPanel from "./ActivityPanel.svelte";
 
 	// See h/[roomId]/+page.svelte's comment on why the typed PageProps params
 	// are used here instead of $app/state's broadly-typed page.params.
@@ -14,9 +15,11 @@
 
 	let session = $state<HouseholdSession | null>(null);
 	let household = $state<HouseholdSnapshot | null>(null);
+	let activity = $state<ActivitySnapshot[]>([]);
 	let newItemText = $state("");
 	let editingItemId = $state<string | null>(null);
 	let editingText = $state("");
+	let showActivity = $state(false);
 
 	let unsubscribe: (() => void) | null = null;
 
@@ -29,8 +32,9 @@
 		// household is already open (the common case -- you navigate here from
 		// there); joins fresh otherwise (e.g. a deep link straight to a list).
 		session = await getOrJoinSession(roomId, getDeviceLabel());
-		unsubscribe = session.household.subscribe((snapshot) => {
+		unsubscribe = session.household.subscribe(({ household: snapshot, activity: entries }) => {
 			household = snapshot;
+			activity = entries;
 		});
 	});
 
@@ -66,6 +70,10 @@
 	function removeItem(itemId: string): void {
 		session?.archiveItem(listId, itemId);
 	}
+
+	function restoreItem(itemId: string): void {
+		session?.unarchiveItem(listId, itemId);
+	}
 </script>
 
 <main>
@@ -100,7 +108,10 @@
 							onkeydown={(e) => e.key === "Enter" && commitEdit()}
 						/>
 					{:else}
-						<button class="text" onclick={() => startEdit(item.id, item.text)}>{item.text}</button>
+						<div class="text-wrap">
+							<button class="text" onclick={() => startEdit(item.id, item.text)}>{item.text}</button>
+							<span class="added-by">added by {item.addedBy}</span>
+						</div>
 					{/if}
 					<button class="remove" onclick={() => removeItem(item.id)} aria-label="Remove item">✕</button>
 				</li>
@@ -109,6 +120,19 @@
 
 		{#if list.items.filter((i) => !i.archived).length === 0}
 			<p class="empty">nothing here yet.</p>
+		{/if}
+
+		<button class="btn btn-ghost activity-button" onclick={() => (showActivity = !showActivity)}>
+			activity
+		</button>
+
+		{#if showActivity}
+			<ActivityPanel
+				entries={activity.filter((e) => e.listId === listId)}
+				currentItems={list.items}
+				onRestore={restoreItem}
+				onClose={() => (showActivity = false)}
+			/>
 		{/if}
 	{:else if household}
 		<p class="empty">list not found.</p>
@@ -161,8 +185,13 @@
 		background: var(--color-teal);
 		color: #ffffff;
 	}
-	.text {
+	.text-wrap {
 		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+	}
+	.text {
 		text-align: left;
 		background: none;
 		border: none;
@@ -175,6 +204,14 @@
 	.items li.checked .text {
 		color: var(--text-secondary);
 		text-decoration: line-through;
+	}
+	.added-by {
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+	}
+	.activity-button {
+		width: 100%;
+		margin-top: 1.25rem;
 	}
 	.edit-input {
 		flex: 1;

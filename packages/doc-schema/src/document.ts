@@ -8,16 +8,21 @@ import * as Y from "yjs";
 // move the same element concurrently. Keying by UUID makes insert/update/
 // delete of any single list or item an independent, position-free operation;
 // ordering is a separate fractional-index string any peer can rewrite in
-// O(1) without touching siblings.
+// O(1) without touching siblings. The activity log below reuses the same
+// uuid-keyed-map vocabulary rather than a Y.Array for the same reason: it
+// needs no positional semantics (it's append-only), and a second CRDT
+// collection type would be a second, unproven merge-semantics surface.
 const META_KEY = "meta";
 const LISTS_KEY = "lists";
 const ITEMS_KEY = "items";
+const ACTIVITY_KEY = "activity";
 
 export interface ListSnapshot {
   id: string;
   name: string;
   order: string;
   archived: boolean;
+  deletedAt: number | null;
   createdBy: string;
   createdAt: number;
   items: ItemSnapshot[];
@@ -27,6 +32,7 @@ export interface ItemSnapshot {
   id: string;
   text: string;
   checked: boolean;
+  checkedBy: string | null;
   order: string;
   archived: boolean;
   deletedAt: number | null;
@@ -40,6 +46,33 @@ export interface HouseholdSnapshot {
   name: string;
   createdAt: number;
   lists: ListSnapshot[];
+}
+
+export type ActivityType =
+  | "list.created"
+  | "list.renamed"
+  | "list.archived"
+  | "list.unarchived"
+  | "item.added"
+  | "item.edited"
+  | "item.checked"
+  | "item.unchecked"
+  | "item.archived"
+  | "item.unarchived";
+
+// Fields are snapshotted at write time, not live references -- an entry must
+// stay a faithful, renderable historical fact even if the list/item it
+// describes is edited again (or restored differently) afterward.
+export interface ActivitySnapshot {
+  id: string;
+  type: ActivityType;
+  actorLabel: string;
+  timestamp: number;
+  listId: string;
+  listName: string;
+  itemId: string | null;
+  itemText: string | null;
+  previousText: string | null;
 }
 
 type YRecord = Y.Map<unknown>;
@@ -64,6 +97,7 @@ export function initializeHouseholdMeta(doc: Y.Doc, name: string): void {
     meta.set("createdAt", Date.now());
   });
   doc.getMap(LISTS_KEY);
+  doc.getMap(ACTIVITY_KEY);
 }
 
 function getListsMap(doc: Y.Doc): Y.Map<YRecord> {
@@ -86,11 +120,21 @@ function getItemRecord(doc: Y.Doc, listId: string, itemId: string): YRecord {
   return item;
 }
 
+function getActivityMap(doc: Y.Doc): Y.Map<YRecord> {
+  return doc.getMap(ACTIVITY_KEY) as Y.Map<YRecord>;
+}
+
 function sortedByOrder(map: Y.Map<YRecord>): YRecord[] {
   return Array.from(map.values()).sort((a, b) => {
     const oa = a.get("order") as string;
     const ob = b.get("order") as string;
     return oa < ob ? -1 : oa > ob ? 1 : 0;
+  });
+}
+
+function sortedByTimestampDesc(map: Y.Map<YRecord>): YRecord[] {
+  return Array.from(map.values()).sort((a, b) => {
+    return (b.get("timestamp") as number) - (a.get("timestamp") as number);
   });
 }
 
@@ -106,6 +150,25 @@ function orderKeyOf(map: Y.Map<YRecord>, id: string | null): string | null {
   return record ? (record.get("order") as string) : null;
 }
 
+// Must be called from *inside* the same doc.transact() as the field mutation
+// it documents, so the state change and its audit entry are one atomic
+// update -- never a separate transaction, which would let the two drift
+// apart under offline queuing/replay.
+function appendActivity(doc: Y.Doc, entry: Omit<ActivitySnapshot, "id" | "timestamp">): void {
+  const id = uuidv4();
+  const record: Y.Map<unknown> = new Y.Map();
+  record.set("id", id);
+  record.set("type", entry.type);
+  record.set("actorLabel", entry.actorLabel);
+  record.set("timestamp", Date.now());
+  record.set("listId", entry.listId);
+  record.set("listName", entry.listName);
+  record.set("itemId", entry.itemId);
+  record.set("itemText", entry.itemText);
+  record.set("previousText", entry.previousText);
+  getActivityMap(doc).set(id, record);
+}
+
 // --- Lists ---
 
 export function createList(doc: Y.Doc, name: string, createdBy: string): string {
@@ -118,18 +181,38 @@ export function createList(doc: Y.Doc, name: string, createdBy: string): string 
     list.set("name", name);
     list.set("order", nextOrderKey(listsMap));
     list.set("archived", false);
+    list.set("deletedAt", null);
     list.set("createdBy", createdBy);
     list.set("createdAt", now);
     list.set(ITEMS_KEY, new Y.Map());
     listsMap.set(id, list);
+    appendActivity(doc, {
+      type: "list.created",
+      actorLabel: createdBy,
+      listId: id,
+      listName: name,
+      itemId: null,
+      itemText: null,
+      previousText: null,
+    });
   });
   return id;
 }
 
-export function renameList(doc: Y.Doc, listId: string, name: string): void {
+export function renameList(doc: Y.Doc, listId: string, name: string, actorLabel: string): void {
   const list = getListRecord(doc, listId);
+  const previousName = list.get("name") as string;
   doc.transact(() => {
     list.set("name", name);
+    appendActivity(doc, {
+      type: "list.renamed",
+      actorLabel,
+      listId,
+      listName: name,
+      itemId: null,
+      itemText: null,
+      previousText: previousName,
+    });
   });
 }
 
@@ -139,17 +222,39 @@ export function renameList(doc: Y.Doc, listId: string, name: string): void {
 // parent). An archived flag turns that into a plain last-write-wins field
 // race: safe, reversible, and consistent with how mature local-first apps
 // (Linear, tldraw) prefer tombstones over structural deletes.
-export function archiveList(doc: Y.Doc, listId: string): void {
+export function archiveList(doc: Y.Doc, listId: string, actorLabel: string): void {
   const list = getListRecord(doc, listId);
+  const listName = list.get("name") as string;
   doc.transact(() => {
     list.set("archived", true);
+    list.set("deletedAt", Date.now());
+    appendActivity(doc, {
+      type: "list.archived",
+      actorLabel,
+      listId,
+      listName,
+      itemId: null,
+      itemText: null,
+      previousText: null,
+    });
   });
 }
 
-export function unarchiveList(doc: Y.Doc, listId: string): void {
+export function unarchiveList(doc: Y.Doc, listId: string, actorLabel: string): void {
   const list = getListRecord(doc, listId);
+  const listName = list.get("name") as string;
   doc.transact(() => {
     list.set("archived", false);
+    list.set("deletedAt", null);
+    appendActivity(doc, {
+      type: "list.unarchived",
+      actorLabel,
+      listId,
+      listName,
+      itemId: null,
+      itemText: null,
+      previousText: null,
+    });
   });
 }
 
@@ -158,6 +263,10 @@ export function reorderList(
   listId: string,
   beforeListId: string | null,
   afterListId: string | null,
+  // Accepted for interface consistency with every other mutation, not used:
+  // dragging to a new position isn't an attribution-worthy event and would
+  // just bury the activity feed's actually-interesting entries.
+  _actorLabel: string,
 ): void {
   const listsMap = getListsMap(doc);
   const list = getListRecord(doc, listId);
@@ -173,12 +282,14 @@ export function reorderList(
 export function addItem(doc: Y.Doc, listId: string, text: string, addedBy: string): string {
   const id = uuidv4();
   const itemsMap = getItemsMap(doc, listId);
+  const listName = getListRecord(doc, listId).get("name") as string;
   doc.transact(() => {
     const item: Y.Map<unknown> = new Y.Map();
     const now = Date.now();
     item.set("id", id);
     item.set("text", text);
     item.set("checked", false);
+    item.set("checkedBy", null);
     item.set("order", nextOrderKey(itemsMap));
     item.set("archived", false);
     item.set("deletedAt", null);
@@ -186,39 +297,105 @@ export function addItem(doc: Y.Doc, listId: string, text: string, addedBy: strin
     item.set("addedAt", now);
     item.set("updatedAt", now);
     itemsMap.set(id, item);
+    appendActivity(doc, {
+      type: "item.added",
+      actorLabel: addedBy,
+      listId,
+      listName,
+      itemId: id,
+      itemText: text,
+      previousText: null,
+    });
   });
   return id;
 }
 
-export function setItemText(doc: Y.Doc, listId: string, itemId: string, text: string): void {
+export function setItemText(
+  doc: Y.Doc,
+  listId: string,
+  itemId: string,
+  text: string,
+  actorLabel: string,
+): void {
   const item = getItemRecord(doc, listId, itemId);
+  const listName = getListRecord(doc, listId).get("name") as string;
+  const previousText = item.get("text") as string;
   doc.transact(() => {
     item.set("text", text);
     item.set("updatedAt", Date.now());
+    appendActivity(doc, {
+      type: "item.edited",
+      actorLabel,
+      listId,
+      listName,
+      itemId,
+      itemText: text,
+      previousText,
+    });
   });
 }
 
-export function setItemChecked(doc: Y.Doc, listId: string, itemId: string, checked: boolean): void {
+export function setItemChecked(
+  doc: Y.Doc,
+  listId: string,
+  itemId: string,
+  checked: boolean,
+  actorLabel: string,
+): void {
   const item = getItemRecord(doc, listId, itemId);
+  const listName = getListRecord(doc, listId).get("name") as string;
+  const itemText = item.get("text") as string;
   doc.transact(() => {
     item.set("checked", checked);
+    item.set("checkedBy", checked ? actorLabel : null);
     item.set("updatedAt", Date.now());
+    appendActivity(doc, {
+      type: checked ? "item.checked" : "item.unchecked",
+      actorLabel,
+      listId,
+      listName,
+      itemId,
+      itemText,
+      previousText: null,
+    });
   });
 }
 
-export function archiveItem(doc: Y.Doc, listId: string, itemId: string): void {
+export function archiveItem(doc: Y.Doc, listId: string, itemId: string, actorLabel: string): void {
   const item = getItemRecord(doc, listId, itemId);
+  const listName = getListRecord(doc, listId).get("name") as string;
+  const itemText = item.get("text") as string;
   doc.transact(() => {
     item.set("archived", true);
     item.set("deletedAt", Date.now());
+    appendActivity(doc, {
+      type: "item.archived",
+      actorLabel,
+      listId,
+      listName,
+      itemId,
+      itemText,
+      previousText: null,
+    });
   });
 }
 
-export function unarchiveItem(doc: Y.Doc, listId: string, itemId: string): void {
+export function unarchiveItem(doc: Y.Doc, listId: string, itemId: string, actorLabel: string): void {
   const item = getItemRecord(doc, listId, itemId);
+  const listName = getListRecord(doc, listId).get("name") as string;
+  const itemText = item.get("text") as string;
   doc.transact(() => {
     item.set("archived", false);
     item.set("deletedAt", null);
+    appendActivity(doc, {
+      type: "item.unarchived",
+      actorLabel,
+      listId,
+      listName,
+      itemId,
+      itemText,
+      previousText: null,
+    });
   });
 }
 
@@ -228,6 +405,8 @@ export function reorderItem(
   itemId: string,
   beforeItemId: string | null,
   afterItemId: string | null,
+  // See reorderList's note -- accepted for consistency, no activity emitted.
+  _actorLabel: string,
 ): void {
   const itemsMap = getItemsMap(doc, listId);
   const item = getItemRecord(doc, listId, itemId);
@@ -246,6 +425,7 @@ function readItem(record: YRecord): ItemSnapshot {
     id: record.get("id") as string,
     text: record.get("text") as string,
     checked: record.get("checked") as boolean,
+    checkedBy: (record.get("checkedBy") as string | null) ?? null,
     order: record.get("order") as string,
     archived: record.get("archived") as boolean,
     deletedAt: record.get("deletedAt") as number | null,
@@ -262,9 +442,24 @@ function readList(record: YRecord): ListSnapshot {
     name: record.get("name") as string,
     order: record.get("order") as string,
     archived: record.get("archived") as boolean,
+    deletedAt: (record.get("deletedAt") as number | null) ?? null,
     createdBy: record.get("createdBy") as string,
     createdAt: record.get("createdAt") as number,
     items: sortedByOrder(itemsMap).map(readItem),
+  };
+}
+
+function readActivityRecord(record: YRecord): ActivitySnapshot {
+  return {
+    id: record.get("id") as string,
+    type: record.get("type") as ActivityType,
+    actorLabel: record.get("actorLabel") as string,
+    timestamp: record.get("timestamp") as number,
+    listId: record.get("listId") as string,
+    listName: record.get("listName") as string,
+    itemId: (record.get("itemId") as string | null) ?? null,
+    itemText: (record.get("itemText") as string | null) ?? null,
+    previousText: (record.get("previousText") as string | null) ?? null,
   };
 }
 
@@ -277,4 +472,11 @@ export function readHousehold(doc: Y.Doc): HouseholdSnapshot {
     createdAt: meta.get("createdAt") as number,
     lists: sortedByOrder(listsMap).map(readList),
   };
+}
+
+// Unfiltered, most-recent-first -- filtering by listId/type is left to
+// callers, matching how readHousehold/readList already push filtering
+// (e.g. "!archived") to the UI layer rather than doc-schema.
+export function readActivity(doc: Y.Doc): ActivitySnapshot[] {
+  return sortedByTimestampDesc(getActivityMap(doc)).map(readActivityRecord);
 }

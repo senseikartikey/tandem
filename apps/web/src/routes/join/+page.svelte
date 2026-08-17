@@ -29,7 +29,7 @@
 			// before `subscribe()` has even returned, so `unsubscribe` must be
 			// declared before the call, not destructured from its result.
 			let unsubscribe: (() => void) | null = null;
-			unsubscribe = session.household.subscribe((snapshot) => {
+			unsubscribe = session.household.subscribe(({ household: snapshot }) => {
 				if (snapshot.name) {
 					rememberHousehold(roomId, snapshot.name);
 					unsubscribe?.();

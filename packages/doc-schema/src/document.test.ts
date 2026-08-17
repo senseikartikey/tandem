@@ -10,13 +10,17 @@ import * as Y from "yjs";
 import {
   addItem,
   archiveItem,
+  archiveList,
   createHouseholdDoc,
   createList,
+  readActivity,
   readHousehold,
+  renameList,
   reorderItem,
   setItemChecked,
   setItemText,
   unarchiveItem,
+  unarchiveList,
 } from "./document.js";
 
 function cloneDoc(source: Y.Doc): Y.Doc {
@@ -95,8 +99,8 @@ describe("3. concurrent edits to different fields of the same item", () => {
     const docA = cloneDoc(base);
     const docB = cloneDoc(base);
 
-    setItemText(docA, listId, itemId, "Oat milk");
-    setItemChecked(docB, listId, itemId, true);
+    setItemText(docA, listId, itemId, "Oat milk", "alice");
+    setItemChecked(docB, listId, itemId, true, "bob");
 
     syncDocs(docA, docB);
 
@@ -117,8 +121,8 @@ describe("4. concurrent edits to the same field of the same item", () => {
     const docA = cloneDoc(base);
     const docB = cloneDoc(base);
 
-    setItemText(docA, listId, itemId, "Oat milk");
-    setItemText(docB, listId, itemId, "Almond milk");
+    setItemText(docA, listId, itemId, "Oat milk", "alice");
+    setItemText(docB, listId, itemId, "Almond milk", "bob");
 
     syncDocs(docA, docB);
 
@@ -138,8 +142,8 @@ describe("5. soft-delete racing a concurrent field edit on the same item", () =>
     const docA = cloneDoc(base);
     const docB = cloneDoc(base);
 
-    archiveItem(docA, listId, itemId);
-    setItemText(docB, listId, itemId, "Oat milk");
+    archiveItem(docA, listId, itemId, "alice");
+    setItemText(docB, listId, itemId, "Oat milk", "bob");
 
     syncDocs(docA, docB);
 
@@ -149,11 +153,13 @@ describe("5. soft-delete racing a concurrent field edit on the same item", () =>
       expect(item.text).toBe("Oat milk");
     }
 
-    unarchiveItem(docA, listId, itemId);
+    unarchiveItem(docA, listId, itemId, "carol");
     syncDocs(docA, docB);
     for (const doc of [docA, docB]) {
       const item = readHousehold(doc).lists[0].items[0];
       expect(item.archived).toBe(false);
+      // Restore is a pure flag flip -- it must preserve the concurrently
+      // edited text, not resurrect the pre-edit original.
       expect(item.text).toBe("Oat milk");
     }
   });
@@ -171,8 +177,8 @@ describe("6. concurrent reorder of different items", () => {
 
     // A moves item3 between item1 and item2; B concurrently moves item1
     // between item2 and item3 -- both relative to the pre-sync order.
-    reorderItem(docA, listId, item3, item1, item2);
-    reorderItem(docB, listId, item1, item2, item3);
+    reorderItem(docA, listId, item3, item1, item2, "alice");
+    reorderItem(docB, listId, item1, item2, item3, "bob");
 
     syncDocs(docA, docB);
 
@@ -197,7 +203,7 @@ describe("7. three-way merge", () => {
     const docC = cloneDoc(base);
 
     addItem(docA, listId, "Bread", "alice");
-    setItemChecked(docB, listId, sharedItem, true);
+    setItemChecked(docB, listId, sharedItem, true, "bob");
     addItem(docC, listId, "Eggs", "carol");
 
     syncDocs(docA, docB, docC);
@@ -276,7 +282,10 @@ describe("10. randomized fuzz: N devices, random concurrent ops", () => {
       | { kind: "setText"; itemId: string; text: string }
       | { kind: "archive"; itemId: string }
       | { kind: "unarchive"; itemId: string }
-      | { kind: "addItem"; text: string };
+      | { kind: "addItem"; text: string }
+      | { kind: "renameList" }
+      | { kind: "archiveList" }
+      | { kind: "unarchiveList" };
 
     const opArb: fc.Arbitrary<Op> = fc.oneof(
       fc.constantFrom(...seedIds).map((itemId) => ({ kind: "toggle", itemId }) as Op),
@@ -286,24 +295,36 @@ describe("10. randomized fuzz: N devices, random concurrent ops", () => {
       fc.constantFrom(...seedIds).map((itemId) => ({ kind: "archive", itemId }) as Op),
       fc.constantFrom(...seedIds).map((itemId) => ({ kind: "unarchive", itemId }) as Op),
       fc.string({ minLength: 1, maxLength: 12 }).map((text) => ({ kind: "addItem", text }) as Op),
+      fc.constant({ kind: "renameList" } as Op),
+      fc.constant({ kind: "archiveList" } as Op),
+      fc.constant({ kind: "unarchiveList" } as Op),
     );
 
-    function applyOp(doc: Y.Doc, op: Op): void {
+    function applyOp(doc: Y.Doc, op: Op, actor: string): void {
       switch (op.kind) {
         case "toggle":
-          setItemChecked(doc, listId, op.itemId, true);
+          setItemChecked(doc, listId, op.itemId, true, actor);
           break;
         case "setText":
-          setItemText(doc, listId, op.itemId, op.text);
+          setItemText(doc, listId, op.itemId, op.text, actor);
           break;
         case "archive":
-          archiveItem(doc, listId, op.itemId);
+          archiveItem(doc, listId, op.itemId, actor);
           break;
         case "unarchive":
-          unarchiveItem(doc, listId, op.itemId);
+          unarchiveItem(doc, listId, op.itemId, actor);
           break;
         case "addItem":
           addItem(doc, listId, op.text, "fuzzer");
+          break;
+        case "renameList":
+          renameList(doc, listId, `Groceries-${actor}`, actor);
+          break;
+        case "archiveList":
+          archiveList(doc, listId, actor);
+          break;
+        case "unarchiveList":
+          unarchiveList(doc, listId, actor);
           break;
       }
     }
@@ -316,9 +337,9 @@ describe("10. randomized fuzz: N devices, random concurrent ops", () => {
         const docB = cloneDoc(base);
         const docC = cloneDoc(base);
 
-        opsA.forEach((op) => applyOp(docA, op));
-        opsB.forEach((op) => applyOp(docB, op));
-        opsC.forEach((op) => applyOp(docC, op));
+        opsA.forEach((op) => applyOp(docA, op, "device-a"));
+        opsB.forEach((op) => applyOp(docB, op, "device-b"));
+        opsC.forEach((op) => applyOp(docC, op, "device-c"));
 
         syncDocs(docA, docB, docC);
 
@@ -327,5 +348,152 @@ describe("10. randomized fuzz: N devices, random concurrent ops", () => {
       }),
       { numRuns: 25 },
     );
+  });
+});
+
+describe("11. activity log: concurrent entries from two offline devices", () => {
+  test("both entries survive and converge", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    const docA = cloneDoc(base);
+    const docB = cloneDoc(base);
+
+    setItemText(docA, listId, itemId, "Oat milk", "device-a");
+    renameList(docB, listId, "Weekly Groceries", "device-b");
+
+    syncDocs(docA, docB);
+
+    for (const doc of [docA, docB]) {
+      const entries = readActivity(doc);
+      expect(entries.some((e) => e.type === "item.edited" && e.actorLabel === "device-a")).toBe(
+        true,
+      );
+      expect(
+        entries.some((e) => e.type === "list.renamed" && e.actorLabel === "device-b"),
+      ).toBe(true);
+    }
+    expect(statesConverged(docA, docB)).toBe(true);
+  });
+});
+
+describe("12. activity log: concurrent appends never collide", () => {
+  test("both uuid-keyed entries survive sync (size = pre-existing + 2)", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    const before = readActivity(base).length;
+    const docA = cloneDoc(base);
+    const docB = cloneDoc(base);
+
+    setItemChecked(docA, listId, itemId, true, "device-a");
+    setItemChecked(docB, listId, itemId, true, "device-b");
+
+    syncDocs(docA, docB);
+
+    expect(readActivity(docA).length).toBe(before + 2);
+    expect(readActivity(docB).length).toBe(before + 2);
+    expect(statesConverged(docA, docB)).toBe(true);
+  });
+});
+
+describe("13. checkedBy stays consistent with checked under a concurrent race", () => {
+  test("never checked:true with checkedBy:null or vice versa", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    const docA = cloneDoc(base);
+    const docB = cloneDoc(base);
+
+    setItemChecked(docA, listId, itemId, true, "device-a");
+    setItemChecked(docB, listId, itemId, false, "device-b");
+
+    syncDocs(docA, docB);
+
+    for (const doc of [docA, docB]) {
+      const item = readHousehold(doc).lists[0].items[0];
+      if (item.checked) {
+        expect(item.checkedBy).not.toBeNull();
+      } else {
+        expect(item.checkedBy).toBeNull();
+      }
+    }
+    expect(statesConverged(docA, docB)).toBe(true);
+  });
+});
+
+describe("14. unarchiveList restores a list with its nested items intact", () => {
+  test("items and their field values are unchanged after archive/unarchive", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    addItem(base, listId, "Milk", "alice");
+    addItem(base, listId, "Eggs", "alice");
+    setItemChecked(base, listId, readHousehold(base).lists[0].items[0].id, true, "alice");
+
+    const before = readHousehold(base).lists[0].items;
+
+    archiveList(base, listId, "alice");
+    unarchiveList(base, listId, "alice");
+
+    const list = readHousehold(base).lists[0];
+    expect(list.archived).toBe(false);
+    expect(list.deletedAt).toBeNull();
+    expect(list.items).toEqual(before);
+  });
+});
+
+describe("15. mutation helpers emit correctly attributed activity entries", () => {
+  test("renameList captures previousText and the new listName", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    renameList(base, listId, "Weekly Groceries", "device-abc");
+
+    const entry = readActivity(base).find((e) => e.type === "list.renamed");
+    expect(entry).toMatchObject({
+      actorLabel: "device-abc",
+      listName: "Weekly Groceries",
+      previousText: "Groceries",
+    });
+  });
+
+  test("setItemText captures previousText and itemText before/after the edit", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    setItemText(base, listId, itemId, "Oat milk", "device-abc");
+
+    const entry = readActivity(base).find((e) => e.type === "item.edited");
+    expect(entry).toMatchObject({
+      actorLabel: "device-abc",
+      itemText: "Oat milk",
+      previousText: "Milk",
+    });
+  });
+
+  test("archiveItem/unarchiveItem each emit one correctly attributed entry", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    archiveItem(base, listId, itemId, "device-x");
+    unarchiveItem(base, listId, itemId, "device-y");
+
+    const archived = readActivity(base).find((e) => e.type === "item.archived");
+    const unarchived = readActivity(base).find((e) => e.type === "item.unarchived");
+    expect(archived).toMatchObject({ actorLabel: "device-x", itemText: "Milk" });
+    expect(unarchived).toMatchObject({ actorLabel: "device-y", itemText: "Milk" });
+  });
+
+  test("setItemChecked emits item.checked or item.unchecked matching the toggle", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    setItemChecked(base, listId, itemId, true, "device-x");
+    setItemChecked(base, listId, itemId, false, "device-y");
+
+    const types = readActivity(base)
+      .filter((e) => e.itemId === itemId)
+      .map((e) => e.type);
+    expect(types).toContain("item.checked");
+    expect(types).toContain("item.unchecked");
   });
 });

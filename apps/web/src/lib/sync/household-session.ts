@@ -1,14 +1,14 @@
 import * as schema from "@tandem/doc-schema";
-import type { HouseholdSnapshot } from "@tandem/doc-schema";
 import { connectHousehold } from "./provider.js";
-import { householdStore, type Readable } from "./household-store.js";
+import { householdStore, type HouseholdStoreValue, type Readable } from "./household-store.js";
 
 export interface HouseholdSession {
   roomId: string;
-  household: Readable<HouseholdSnapshot>;
+  household: Readable<HouseholdStoreValue>;
   createList(name: string): string;
   renameList(listId: string, name: string): void;
   archiveList(listId: string): void;
+  unarchiveList(listId: string): void;
   addItem(listId: string, text: string): string;
   setItemText(listId: string, itemId: string, text: string): void;
   setItemChecked(listId: string, itemId: string, checked: boolean): void;
@@ -22,14 +22,16 @@ function wrapSession(roomId: string, sync: Awaited<ReturnType<typeof connectHous
     roomId,
     household: householdStore(sync.doc),
     createList: (name) => schema.createList(sync.doc, name, deviceLabel),
-    renameList: (listId, name) => schema.renameList(sync.doc, listId, name),
-    archiveList: (listId) => schema.archiveList(sync.doc, listId),
+    renameList: (listId, name) => schema.renameList(sync.doc, listId, name, deviceLabel),
+    archiveList: (listId) => schema.archiveList(sync.doc, listId, deviceLabel),
+    unarchiveList: (listId) => schema.unarchiveList(sync.doc, listId, deviceLabel),
     addItem: (listId, text) => schema.addItem(sync.doc, listId, text, deviceLabel),
-    setItemText: (listId, itemId, text) => schema.setItemText(sync.doc, listId, itemId, text),
+    setItemText: (listId, itemId, text) =>
+      schema.setItemText(sync.doc, listId, itemId, text, deviceLabel),
     setItemChecked: (listId, itemId, checked) =>
-      schema.setItemChecked(sync.doc, listId, itemId, checked),
-    archiveItem: (listId, itemId) => schema.archiveItem(sync.doc, listId, itemId),
-    unarchiveItem: (listId, itemId) => schema.unarchiveItem(sync.doc, listId, itemId),
+      schema.setItemChecked(sync.doc, listId, itemId, checked, deviceLabel),
+    archiveItem: (listId, itemId) => schema.archiveItem(sync.doc, listId, itemId, deviceLabel),
+    unarchiveItem: (listId, itemId) => schema.unarchiveItem(sync.doc, listId, itemId, deviceLabel),
     destroy: () => sync.destroy(),
   };
 }

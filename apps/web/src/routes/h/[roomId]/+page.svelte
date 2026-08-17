@@ -6,7 +6,7 @@
 	import { getDeviceLabel, rememberHousehold } from "$lib/local-households";
 	import { createHouseholdSession, type HouseholdSession } from "$lib/sync/household-session";
 	import { cacheSession, getOrJoinSession } from "$lib/sync/session-cache";
-	import type { HouseholdSnapshot } from "@tandem/doc-schema";
+	import type { ActivitySnapshot, HouseholdSnapshot } from "@tandem/doc-schema";
 	import { onDestroy, onMount } from "svelte";
 	import type { PageProps } from "./$types";
 
@@ -17,8 +17,10 @@
 	const roomId = params.roomId;
 	let session = $state<HouseholdSession | null>(null);
 	let household = $state<HouseholdSnapshot | null>(null);
+	let activity = $state<ActivitySnapshot[]>([]);
 	let newListName = $state("");
 	let showInvite = $state(false);
+	let showRemovedLists = $state(false);
 	let inviteLink = $state("");
 	let inviteQr = $state("");
 	let inviteCode = $state("");
@@ -36,8 +38,9 @@
 			session = await getOrJoinSession(roomId, getDeviceLabel());
 		}
 
-		unsubscribe = session.household.subscribe((snapshot) => {
+		unsubscribe = session.household.subscribe(({ household: snapshot, activity: entries }) => {
 			household = snapshot;
+			activity = entries;
 			if (snapshot.name) rememberHousehold(roomId, snapshot.name);
 		});
 	});
@@ -55,6 +58,29 @@
 		if (!name || !session) return;
 		session.createList(name);
 		newListName = "";
+	}
+
+	function removeList(listId: string): void {
+		session?.archiveList(listId);
+	}
+
+	// Once a list is archived it drops out of the .lists rendering above and
+	// nothing in the app links to its /[listId] route anymore -- there's no
+	// per-list view left to host a restore control on. This panel is the only
+	// reachable place a removed list's undo can live.
+	let removedLists = $derived(
+		(household?.lists ?? [])
+			.filter((l) => l.archived)
+			.sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0)),
+	);
+
+	function removedByLabel(listId: string): string | null {
+		const entry = activity.find((e) => e.listId === listId && e.type === "list.archived");
+		return entry?.actorLabel ?? null;
+	}
+
+	function restoreList(listId: string): void {
+		session?.unarchiveList(listId);
 	}
 
 	async function openInvite(): Promise<void> {
@@ -87,12 +113,22 @@
 
 		<div class="lists">
 			{#each household.lists.filter((l) => !l.archived) as list, i (list.id)}
-				<a class="card card-flat list-card" href={`/h/${roomId}/${list.id}`}>
-					<span class="list-name">{list.name}</span>
-					<span class="count" style={`background:${["#4ecdc4", "#ffe566", "#f9a8b8", "#c4b5fd"][i % 4]}`}>
-						{list.items.filter((i) => !i.archived).length}
-					</span>
-				</a>
+				<div class="card card-flat list-row">
+					<a class="list-card" href={`/h/${roomId}/${list.id}`}>
+						<span class="list-name">{list.name}</span>
+						<span class="count" style={`background:${["#4ecdc4", "#ffe566", "#f9a8b8", "#c4b5fd"][i % 4]}`}>
+							{list.items.filter((i) => !i.archived).length}
+						</span>
+					</a>
+					<button
+						class="remove"
+						onclick={() => removeList(list.id)}
+						aria-label={`Remove ${list.name}`}
+						title="remove list"
+					>
+						✕
+					</button>
+				</div>
 			{/each}
 		</div>
 
@@ -123,6 +159,31 @@
 				<button class="btn-close" onclick={() => (showInvite = false)}>close</button>
 			</div>
 		{/if}
+
+		{#if removedLists.length > 0}
+			<button class="btn btn-ghost removed-button" onclick={() => (showRemovedLists = !showRemovedLists)}>
+				recently removed lists ({removedLists.length})
+			</button>
+		{/if}
+
+		{#if showRemovedLists}
+			<div class="card removed-panel">
+				<ul class="removed-list">
+					{#each removedLists as list (list.id)}
+						<li>
+							<div class="removed-info">
+								<span class="removed-name">{list.name}</span>
+								{#if removedByLabel(list.id)}
+									<span class="removed-by">removed by {removedByLabel(list.id)}</span>
+								{/if}
+							</div>
+							<button class="btn btn-teal btn-small" onclick={() => restoreList(list.id)}>restore</button>
+						</li>
+					{/each}
+				</ul>
+				<button class="btn-close" onclick={() => (showRemovedLists = false)}>close</button>
+			</div>
+		{/if}
 	{:else}
 		<p>loading…</p>
 	{/if}
@@ -148,12 +209,38 @@
 		gap: 0.6rem;
 		margin-bottom: 1.5rem;
 	}
+	.list-row {
+		display: flex;
+		align-items: center;
+		padding: 0.25rem 0.25rem 0.25rem 1rem;
+		transition:
+			transform 0.1s ease,
+			box-shadow 0.1s ease;
+	}
+	.list-row:hover {
+		transform: translate(2px, 2px);
+		box-shadow: var(--shadow-md-hover);
+	}
 	.list-card {
+		flex: 1;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1rem;
+		padding: 0.75rem 0;
 		text-decoration: none;
+		color: var(--text-primary);
+	}
+	.list-row .remove {
+		flex-shrink: 0;
+		background: none;
+		border: none;
+		color: var(--text-secondary);
+		padding: 0.6rem 0.75rem;
+		font-weight: 700;
+		cursor: pointer;
+	}
+	.list-row .remove:hover {
+		color: var(--color-primary);
 	}
 	.list-name {
 		font-weight: 700;
@@ -208,5 +295,42 @@
 	.error {
 		color: var(--color-primary);
 		font-weight: 600;
+	}
+	.removed-button {
+		width: 100%;
+		margin-top: 0.75rem;
+	}
+	.removed-panel {
+		margin-top: 0.75rem;
+		padding: 1.25rem;
+	}
+	.removed-list {
+		list-style: none;
+		padding: 0;
+		margin: 0 0 0.75rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+	}
+	.removed-list li {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+	}
+	.removed-info {
+		display: flex;
+		flex-direction: column;
+	}
+	.removed-name {
+		font-weight: 700;
+	}
+	.removed-by {
+		font-size: 0.8rem;
+		color: var(--text-secondary);
+	}
+	.btn-small {
+		padding: 8px 16px;
+		font-size: 0.85rem;
 	}
 </style>
