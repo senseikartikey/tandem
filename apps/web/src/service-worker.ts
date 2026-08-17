@@ -14,7 +14,11 @@ import { build, files, version } from "$service-worker";
 declare let self: ServiceWorkerGlobalScope;
 
 const CACHE_NAME = `tandem-shell-${version}`;
-const PRECACHE_URLS = [...build, ...files];
+// `build`/`files` cover the JS/CSS bundle and static assets, but neither
+// includes the actual HTML document -- without "/" here, the fetch
+// handler's own offline fallback (caches.match("/") below) always misses,
+// which is exactly what makes the very first offline navigation fail.
+const PRECACHE_URLS = [...build, ...files, "/"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
