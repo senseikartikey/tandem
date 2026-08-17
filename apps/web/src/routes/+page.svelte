@@ -2,7 +2,12 @@
 	import { goto } from "$app/navigation";
 	import { createRoom, resolveShortCode } from "$lib/api";
 	import { parseInviteFragment } from "$lib/invite";
-	import { listKnownHouseholds, rememberHousehold, type KnownHousehold } from "$lib/local-households";
+	import {
+		forgetHousehold,
+		listKnownHouseholds,
+		rememberHousehold,
+		type KnownHousehold,
+	} from "$lib/local-households";
 	import { onMount } from "svelte";
 
 	let households = $state<KnownHousehold[]>([]);
@@ -46,6 +51,17 @@
 		}
 	}
 
+	// Only removes this household from *this device's* local list -- the
+	// household itself and its data are untouched (other members, and this
+	// device too, can still get back in via the invite link). There's no
+	// concept of "delete a household" server-side at all: no accounts means
+	// no ownership to check, so this button can only ever affect what's
+	// remembered locally.
+	function removeHousehold(roomId: string): void {
+		forgetHousehold(roomId);
+		households = households.filter((h) => h.roomId !== roomId);
+	}
+
 	function pasteLink(text: string): void {
 		const hashIndex = text.indexOf("#");
 		const fragment = hashIndex >= 0 ? text.slice(hashIndex) : text;
@@ -85,8 +101,16 @@
 			<h2>your households</h2>
 			<ul class="household-list">
 				{#each households as h (h.roomId)}
-					<li>
-						<a class="card household-card" href={`/h/${h.roomId}`}>{h.name}</a>
+					<li class="card household-row">
+						<a class="household-card" href={`/h/${h.roomId}`}>{h.name}</a>
+						<button
+							class="remove"
+							onclick={() => removeHousehold(h.roomId)}
+							aria-label={`Remove ${h.name} from this device`}
+							title="remove from this device"
+						>
+							✕
+						</button>
 					</li>
 				{/each}
 			</ul>
@@ -169,16 +193,36 @@
 		flex-direction: column;
 		gap: 0.6rem;
 	}
+	.household-row {
+		display: flex;
+		align-items: center;
+		padding: 0.25rem 0.25rem 0.25rem 1rem;
+		transition:
+			transform 0.1s ease,
+			box-shadow 0.1s ease;
+	}
+	.household-row:hover {
+		transform: translate(2px, 2px);
+		box-shadow: var(--shadow-md-hover);
+	}
 	.household-card {
-		display: block;
-		padding: 1rem;
+		flex: 1;
+		padding: 0.75rem 0;
 		text-decoration: none;
 		font-weight: 700;
 		color: var(--text-primary);
 	}
-	.household-card:hover {
-		transform: translate(2px, 2px);
-		box-shadow: var(--shadow-md-hover);
+	.household-row .remove {
+		flex-shrink: 0;
+		background: none;
+		border: none;
+		color: var(--text-secondary);
+		padding: 0.6rem 0.75rem;
+		font-weight: 700;
+		cursor: pointer;
+	}
+	.household-row .remove:hover {
+		color: var(--color-primary);
 	}
 	form {
 		display: flex;
