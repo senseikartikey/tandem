@@ -1,12 +1,43 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap");
+
+/* Neobrutalism design system -- warm cream bg, thick black borders, hard
+   zero-blur offset shadows, pastel accents, rounded corners, lowercase
+   headings. Shared tokens + base components live here so every route reuses
+   the same button/card/input primitives instead of re-defining them. */
 :root {
-	color-scheme: dark;
-	--bg: #0b0f14;
-	--bg-raised: #131a22;
-	--border: #263140;
-	--text: #e7edf3;
-	--text-dim: #8ea0b3;
-	--accent: #4fd1c5;
-	--danger: #e5677a;
+	color-scheme: light;
+
+	--bg-page: #fafadf;
+	--bg-surface: #ffffff;
+
+	--color-primary: #e8635a; /* coral -- primary actions */
+	--color-secondary: #7b6cf6; /* purple */
+	--color-teal: #4ecdc4; /* mint -- "done/checked" */
+	--color-yellow: #ffe566;
+	--color-pink: #f9a8b8;
+	--color-lavender: #c4b5fd;
+
+	--border-color: #111111;
+	--border-width: 2px;
+	--border: var(--border-width) solid var(--border-color);
+
+	--radius-sm: 6px;
+	--radius-md: 10px;
+	--radius-lg: 14px;
+	--radius-pill: 999px;
+
+	--shadow-sm: 3px 3px 0px 0px var(--border-color);
+	--shadow-md: 4px 4px 0px 0px var(--border-color);
+	--shadow-lg: 6px 6px 0px 0px var(--border-color);
+	--shadow-sm-hover: 1px 1px 0px 0px var(--border-color);
+	--shadow-md-hover: 2px 2px 0px 0px var(--border-color);
+
+	--font: "DM Sans", sans-serif;
+
+	--text-primary: #111111;
+	--text-secondary: #555555;
+	--text-on-accent: #ffffff;
+
 	font-size: 16px;
 }
 
@@ -18,16 +49,9 @@ html,
 body {
 	margin: 0;
 	padding: 0;
-	background: var(--bg);
-	color: var(--text);
-	font-family:
-		system-ui,
-		-apple-system,
-		"Segoe UI",
-		Roboto,
-		sans-serif;
-	/* Avoids the double-tap-to-zoom delay on mobile, and disables text-select
-	callouts on long-press for a more app-like feel on checklist items. */
+	background: var(--bg-page);
+	color: var(--text-primary);
+	font-family: var(--font);
 	touch-action: manipulation;
 	-webkit-tap-highlight-color: transparent;
 }
@@ -40,15 +64,156 @@ body {
 		env(safe-area-inset-left);
 }
 
+h1,
+h2,
+h3,
+p {
+	font-family: var(--font);
+	color: var(--text-primary);
+	margin: 0;
+}
+
+h1 {
+	font-size: clamp(2rem, 6vw, 3rem);
+	font-weight: 800;
+	line-height: 1.1;
+	letter-spacing: -0.01em;
+}
+
+h2 {
+	font-size: 0.85rem;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	color: var(--text-secondary);
+}
+
+p {
+	font-size: 0.95rem;
+	line-height: 1.6;
+	color: var(--text-secondary);
+}
+
+a {
+	color: var(--text-primary);
+	font-weight: 600;
+}
+
 button {
 	font: inherit;
-	color: inherit;
 }
 
 input {
 	font: inherit;
 }
 
-a {
-	color: var(--accent);
+/* --- Buttons: press-down interaction on every one --- */
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	font-family: var(--font);
+	font-weight: 700;
+	font-size: 0.95rem;
+	padding: 12px 24px;
+	background: var(--color-primary);
+	color: var(--text-on-accent);
+	border: var(--border);
+	border-radius: var(--radius-md);
+	box-shadow: var(--shadow-md);
+	cursor: pointer;
+	transform: translate(0, 0);
+	transition:
+		transform 0.1s ease,
+		box-shadow 0.1s ease,
+		opacity 0.1s ease;
+	text-decoration: none;
+	user-select: none;
+}
+.btn:hover:not(:disabled) {
+	transform: translate(2px, 2px);
+	box-shadow: var(--shadow-md-hover);
+}
+.btn:active:not(:disabled) {
+	transform: translate(4px, 4px);
+	box-shadow: none;
+}
+.btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+.btn-ghost {
+	background: var(--bg-surface);
+	color: var(--text-primary);
+}
+.btn-teal {
+	background: var(--color-teal);
+}
+.btn-secondary {
+	background: var(--color-lavender);
+	color: var(--text-primary);
+}
+
+/* --- Cards --- */
+.card {
+	background: var(--bg-surface);
+	border: var(--border);
+	border-radius: var(--radius-md);
+	box-shadow: var(--shadow-md);
+}
+.card-flat {
+	box-shadow: none;
+}
+
+/* --- Inputs --- */
+.input {
+	width: 100%;
+	background: var(--bg-surface);
+	border: var(--border);
+	border-radius: var(--radius-sm);
+	box-shadow: var(--shadow-sm);
+	padding: 11px 16px;
+	font-family: var(--font);
+	font-size: 0.95rem;
+	color: var(--text-primary);
+	outline: none;
+	transition:
+		box-shadow 0.15s,
+		border-color 0.15s,
+		transform 0.15s;
+}
+.input::placeholder {
+	color: #999;
+}
+.input:focus {
+	border-color: var(--color-primary);
+	box-shadow: 4px 4px 0px 0px var(--color-primary);
+	transform: translate(-1px, -1px);
+}
+
+/* --- Icon circle (used for check-toggles) --- */
+.icon-circle {
+	width: 32px;
+	height: 32px;
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--bg-surface);
+	border: var(--border);
+	border-radius: 50%;
+	box-shadow: var(--shadow-sm);
+	transition:
+		background 0.15s,
+		transform 0.1s;
+}
+.icon-circle:active {
+	transform: translate(2px, 2px);
+	box-shadow: none;
+}
+
+/* --- Decorative scatter (used sparingly, landing view only) --- */
+.deco {
+	position: absolute;
+	pointer-events: none;
 }

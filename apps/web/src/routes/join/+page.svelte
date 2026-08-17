@@ -53,20 +53,20 @@
 	});
 
 	function continueAnyway(): void {
-		rememberHousehold(roomId, "Household");
+		rememberHousehold(roomId, "household");
 		goto(`/h/${roomId}`);
 	}
 </script>
 
 <main>
 	{#if status === "resolving"}
-		<p>Joining household…</p>
+		<p>joining household…</p>
 	{:else if status === "naming"}
-		<p>Still waiting to sync -- the household data hasn't arrived yet. You can open it anyway; it'll fill in once sync completes.</p>
-		<button onclick={continueAnyway}>Open anyway</button>
+		<p>still waiting to sync -- the household data hasn't arrived yet. you can open it anyway; it'll fill in once sync completes.</p>
+		<button class="btn" onclick={continueAnyway}>open anyway</button>
 	{:else}
 		<p class="error">{errorMessage}</p>
-		<a href="/">Back home</a>
+		<a href="/">back home</a>
 	{/if}
 </main>
 
@@ -76,14 +76,10 @@
 		text-align: center;
 	}
 	.error {
-		color: var(--danger);
+		color: var(--color-primary);
+		font-weight: 600;
 	}
 	button {
-		padding: 0.85rem 1.25rem;
-		background: var(--accent);
-		color: #04211d;
-		border: none;
-		border-radius: 0.75rem;
-		font-weight: 600;
+		margin-top: 1rem;
 	}
 </style>

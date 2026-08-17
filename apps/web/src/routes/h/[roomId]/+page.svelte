@@ -80,43 +80,51 @@
 </script>
 
 <main>
-	<a href="/" class="back">&larr; Households</a>
+	<a href="/" class="back">&larr; households</a>
 
 	{#if household}
 		<h1>{household.name}</h1>
 
 		<div class="lists">
-			{#each household.lists.filter((l) => !l.archived) as list (list.id)}
-				<a class="list-card" href={`/h/${roomId}/${list.id}`}>
-					<span>{list.name}</span>
-					<span class="count">{list.items.filter((i) => !i.archived).length}</span>
+			{#each household.lists.filter((l) => !l.archived) as list, i (list.id)}
+				<a class="card card-flat list-card" href={`/h/${roomId}/${list.id}`}>
+					<span class="list-name">{list.name}</span>
+					<span class="count" style={`background:${["#4ecdc4", "#ffe566", "#f9a8b8", "#c4b5fd"][i % 4]}`}>
+						{list.items.filter((i) => !i.archived).length}
+					</span>
 				</a>
 			{/each}
 		</div>
 
-		<form class="add-list" onsubmit={(e) => { e.preventDefault(); addList(); }}>
-			<input type="text" placeholder="New list name" bind:value={newListName} />
-			<button type="submit" disabled={!newListName.trim()}>Add list</button>
+		<form
+			class="add-list"
+			onsubmit={(e) => {
+				e.preventDefault();
+				addList();
+			}}
+		>
+			<input class="input" type="text" placeholder="new list name" bind:value={newListName} />
+			<button class="btn" type="submit" disabled={!newListName.trim()}>add list</button>
 		</form>
 
-		<button class="invite-button" onclick={openInvite}>Invite someone</button>
+		<button class="btn btn-ghost invite-button" onclick={openInvite}>invite someone</button>
 
 		{#if showInvite}
-			<div class="invite-panel">
+			<div class="card invite-panel">
 				{#if inviteError}
 					<p class="error">{inviteError}</p>
 				{:else if inviteQr}
-					<img src={inviteQr} alt="Invite QR code" width="200" height="200" />
+					<img class="qr" src={inviteQr} alt="Invite QR code" width="200" height="200" />
 					<p class="code">{inviteCode}</p>
-					<button onclick={shareInvite}>Share link</button>
+					<button class="btn btn-teal" onclick={shareInvite}>share link</button>
 				{:else}
-					<p>Generating invite…</p>
+					<p>generating invite…</p>
 				{/if}
-				<button class="close" onclick={() => (showInvite = false)}>Close</button>
+				<button class="btn-close" onclick={() => (showInvite = false)}>close</button>
 			</div>
 		{/if}
 	{:else}
-		<p>Loading…</p>
+		<p>loading…</p>
 	{/if}
 </main>
 
@@ -127,81 +135,78 @@
 	.back {
 		display: inline-block;
 		margin-bottom: 1rem;
-		color: var(--text-dim);
 		text-decoration: none;
+		color: var(--text-secondary);
+		font-weight: 600;
+	}
+	h1 {
+		margin-bottom: 1.5rem;
 	}
 	.lists {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		margin: 1.5rem 0;
+		gap: 0.6rem;
+		margin-bottom: 1.5rem;
 	}
 	.list-card {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
 		padding: 1rem;
-		background: var(--bg-raised);
-		border: 1px solid var(--border);
-		border-radius: 0.75rem;
 		text-decoration: none;
-		color: var(--text);
-		font-weight: 500;
+	}
+	.list-name {
+		font-weight: 700;
 	}
 	.count {
-		color: var(--text-dim);
-		font-weight: 400;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 1.6rem;
+		height: 1.6rem;
+		padding: 0 0.4rem;
+		font-size: 0.8rem;
+		font-weight: 700;
+		border: var(--border);
+		border-radius: var(--radius-pill);
+		box-shadow: var(--shadow-sm);
 	}
 	.add-list {
 		display: flex;
 		gap: 0.5rem;
 		margin-bottom: 1.5rem;
 	}
-	.add-list input {
+	.add-list .input {
 		flex: 1;
-		padding: 0.85rem 1rem;
-		background: var(--bg-raised);
-		border: 1px solid var(--border);
-		border-radius: 0.75rem;
-		color: var(--text);
-	}
-	button {
-		padding: 0.85rem 1.25rem;
-		background: var(--accent);
-		color: #04211d;
-		border: none;
-		border-radius: 0.75rem;
-		font-weight: 600;
 	}
 	.invite-button {
 		width: 100%;
-		background: transparent;
-		border: 1px solid var(--border);
-		color: var(--text);
 	}
 	.invite-panel {
 		margin-top: 1.5rem;
 		padding: 1.5rem;
-		background: var(--bg-raised);
-		border: 1px solid var(--border);
-		border-radius: 0.75rem;
 		text-align: center;
 	}
-	.invite-panel img {
-		border-radius: 0.5rem;
+	.qr {
+		border: var(--border);
+		border-radius: var(--radius-sm);
 	}
 	.code {
 		font-size: 1.5rem;
 		letter-spacing: 0.1em;
-		font-weight: 700;
+		font-weight: 800;
 		margin: 0.75rem 0;
 	}
-	.close {
-		background: transparent;
-		color: var(--text-dim);
+	.btn-close {
+		background: none;
+		border: none;
+		color: var(--text-secondary);
+		font-weight: 600;
 		margin-top: 0.75rem;
+		cursor: pointer;
 	}
 	.error {
-		color: var(--danger);
+		color: var(--color-primary);
+		font-weight: 600;
 	}
 </style>

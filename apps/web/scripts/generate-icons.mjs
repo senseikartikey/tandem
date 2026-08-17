@@ -10,8 +10,8 @@ import { fileURLToPath } from "node:url";
 const outDir = join(fileURLToPath(new URL("..", import.meta.url)), "static", "icons");
 mkdirSync(outDir, { recursive: true });
 
-const BG = [15, 26, 34]; // matches --bg-raised-ish
-const FG = [79, 209, 197]; // matches --accent
+const BG = [232, 99, 90]; // --color-primary (coral) -- icons sit on coral, not page cream
+const FG = [255, 255, 255];
 
 function crc32(buf) {
   let c;

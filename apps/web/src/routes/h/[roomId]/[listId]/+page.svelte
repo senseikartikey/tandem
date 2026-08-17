@@ -69,25 +69,31 @@
 </script>
 
 <main>
-	<a href={`/h/${roomId}`} class="back">&larr; {household?.name ?? "Household"}</a>
+	<a href={`/h/${roomId}`} class="back">&larr; {household?.name ?? "household"}</a>
 
 	{#if list}
 		<h1>{list.name}</h1>
 
-		<form class="add-item" onsubmit={(e) => { e.preventDefault(); addItem(); }}>
-			<input type="text" placeholder="Add an item" bind:value={newItemText} autocomplete="off" />
-			<button type="submit" disabled={!newItemText.trim()}>Add</button>
+		<form
+			class="add-item"
+			onsubmit={(e) => {
+				e.preventDefault();
+				addItem();
+			}}
+		>
+			<input class="input" type="text" placeholder="add an item" bind:value={newItemText} autocomplete="off" />
+			<button class="btn" type="submit" disabled={!newItemText.trim()}>add</button>
 		</form>
 
 		<ul class="items">
 			{#each list.items.filter((i) => !i.archived) as item (item.id)}
-				<li class:checked={item.checked}>
-					<button class="check" onclick={() => toggle(item.id, item.checked)} aria-label="Toggle checked">
+				<li class="card card-flat" class:checked={item.checked}>
+					<button class="icon-circle check" onclick={() => toggle(item.id, item.checked)} aria-label="Toggle checked">
 						{item.checked ? "✓" : ""}
 					</button>
 					{#if editingItemId === item.id}
 						<input
-							class="edit-input"
+							class="input edit-input"
 							type="text"
 							bind:value={editingText}
 							onblur={commitEdit}
@@ -102,12 +108,12 @@
 		</ul>
 
 		{#if list.items.filter((i) => !i.archived).length === 0}
-			<p class="empty">Nothing here yet.</p>
+			<p class="empty">nothing here yet.</p>
 		{/if}
 	{:else if household}
-		<p class="empty">List not found.</p>
+		<p class="empty">list not found.</p>
 	{:else}
-		<p>Loading…</p>
+		<p>loading…</p>
 	{/if}
 </main>
 
@@ -118,32 +124,20 @@
 	.back {
 		display: inline-block;
 		margin-bottom: 1rem;
-		color: var(--text-dim);
 		text-decoration: none;
+		color: var(--text-secondary);
+		font-weight: 600;
+	}
+	h1 {
+		margin-bottom: 1rem;
 	}
 	.add-item {
 		display: flex;
 		gap: 0.5rem;
-		margin: 1.25rem 0;
+		margin-bottom: 1.25rem;
 	}
-	.add-item input {
+	.add-item .input {
 		flex: 1;
-		padding: 0.85rem 1rem;
-		background: var(--bg-raised);
-		border: 1px solid var(--border);
-		border-radius: 0.75rem;
-		color: var(--text);
-	}
-	.add-item button {
-		padding: 0.85rem 1.25rem;
-		background: var(--accent);
-		color: #04211d;
-		border: none;
-		border-radius: 0.75rem;
-		font-weight: 600;
-	}
-	.add-item button:disabled {
-		opacity: 0.5;
 	}
 	.items {
 		list-style: none;
@@ -151,33 +145,21 @@
 		margin: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
+		gap: 0.5rem;
 	}
 	.items li {
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
-		padding: 0.6rem 0.75rem;
-		background: var(--bg-raised);
-		border: 1px solid var(--border);
-		border-radius: 0.75rem;
+		padding: 0.7rem 0.85rem;
 	}
 	.check {
-		flex-shrink: 0;
-		width: 1.75rem;
-		height: 1.75rem;
-		border-radius: 50%;
-		border: 1px solid var(--border);
-		background: transparent;
-		color: var(--accent);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 0;
+		font-weight: 800;
+		color: var(--color-teal);
 	}
 	.items li.checked .check {
-		background: var(--accent);
-		color: #04211d;
+		background: var(--color-teal);
+		color: #ffffff;
 	}
 	.text {
 		flex: 1;
@@ -185,29 +167,33 @@
 		background: none;
 		border: none;
 		padding: 0;
-		color: var(--text);
+		font: inherit;
+		font-weight: 600;
+		color: var(--text-primary);
+		cursor: pointer;
 	}
 	.items li.checked .text {
-		color: var(--text-dim);
+		color: var(--text-secondary);
 		text-decoration: line-through;
 	}
 	.edit-input {
 		flex: 1;
-		padding: 0.4rem 0.6rem;
-		background: var(--bg);
-		border: 1px solid var(--accent);
-		border-radius: 0.4rem;
-		color: var(--text);
+		padding: 6px 10px;
+		box-shadow: none;
 	}
 	.remove {
 		flex-shrink: 0;
 		background: none;
 		border: none;
-		color: var(--text-dim);
+		color: var(--text-secondary);
 		padding: 0.25rem;
+		font-weight: 700;
+		cursor: pointer;
+	}
+	.remove:hover {
+		color: var(--color-primary);
 	}
 	.empty {
-		color: var(--text-dim);
 		text-align: center;
 		margin-top: 2rem;
 	}
