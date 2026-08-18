@@ -173,6 +173,11 @@
 					<h3>undo, anytime</h3>
 					<p>Removed something by mistake? One tap brings it back — items or whole lists.</p>
 				</div>
+				<div class="feature-card card">
+					<span class="feature-icon">🟢</span>
+					<h3>shop together, live</h3>
+					<p>See who else has the list open right now, and watch their check-offs flash in as they happen — no more buying the same thing twice.</p>
+				</div>
 			</div>
 		</section>
 
@@ -497,7 +502,7 @@
 			flex-shrink: 0;
 		}
 		.feature-grid {
-			grid-template-columns: repeat(3, 1fr);
+			grid-template-columns: repeat(2, 1fr);
 		}
 		.forms-grid {
 			grid-template-columns: 1fr 1fr;
