@@ -13,6 +13,8 @@ import {
   archiveList,
   createHouseholdDoc,
   createList,
+  forkList,
+  mergeFork,
   readActivity,
   readHousehold,
   renameList,
@@ -495,5 +497,106 @@ describe("15. mutation helpers emit correctly attributed activity entries", () =
       .map((e) => e.type);
     expect(types).toContain("item.checked");
     expect(types).toContain("item.unchecked");
+  });
+});
+
+describe("16. forkList snapshots current items into an independent list", () => {
+  test("fork gets the source's items and checked state, then evolves separately", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const milkId = addItem(base, listId, "Milk", "alice");
+    addItem(base, listId, "Eggs", "alice");
+    setItemChecked(base, listId, milkId, true, "alice");
+
+    const forkId = forkList(base, listId, "Dinner Party", "bob");
+    const fork = readHousehold(base).lists.find((l) => l.id === forkId)!;
+    expect(fork.forkedFromListId).toBe(listId);
+    expect(fork.items.map((i) => i.text).sort()).toEqual(["Eggs", "Milk"]);
+    expect(fork.items.find((i) => i.text === "Milk")!.checked).toBe(true);
+
+    // From here the two lists are independent -- editing one must never
+    // touch the other.
+    addItem(base, listId, "Bread", "alice");
+    addItem(base, forkId, "Wine", "bob");
+
+    const source = readHousehold(base).lists.find((l) => l.id === listId)!;
+    const forkAfter = readHousehold(base).lists.find((l) => l.id === forkId)!;
+    expect(source.items.map((i) => i.text)).not.toContain("Wine");
+    expect(forkAfter.items.map((i) => i.text)).not.toContain("Bread");
+  });
+});
+
+describe("17. mergeFork brings back only items added after the fork point", () => {
+  test("copied-over items aren't duplicated; only genuinely new ones merge", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    addItem(base, listId, "Milk", "alice");
+
+    const forkId = forkList(base, listId, "Dinner Party", "bob");
+    addItem(base, forkId, "Wine", "bob");
+    addItem(base, forkId, "Cheese", "bob");
+
+    const { mergedCount } = mergeFork(base, forkId, "bob");
+    expect(mergedCount).toBe(2);
+
+    const source = readHousehold(base).lists.find((l) => l.id === listId)!;
+    expect(source.items.map((i) => i.text).sort()).toEqual(["Cheese", "Milk", "Wine"]);
+    // "Milk" must appear exactly once -- the copied-over item is not
+    // re-merged as if it were new.
+    expect(source.items.filter((i) => i.text === "Milk")).toHaveLength(1);
+  });
+
+  test("merging archives the fork, same as discarding one would", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const forkId = forkList(base, listId, "Dinner Party", "bob");
+
+    mergeFork(base, forkId, "bob");
+
+    const fork = readHousehold(base).lists.find((l) => l.id === forkId)!;
+    expect(fork.archived).toBe(true);
+  });
+});
+
+describe("18. discarding a fork never touches the source list", () => {
+  test("archiveList on a fork leaves the source completely unaffected", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    addItem(base, listId, "Milk", "alice");
+
+    const forkId = forkList(base, listId, "Dinner Party", "bob");
+    addItem(base, forkId, "Wine", "bob");
+    archiveList(base, forkId, "bob"); // discard, not merge
+
+    const source = readHousehold(base).lists.find((l) => l.id === listId)!;
+    expect(source.items.map((i) => i.text)).toEqual(["Milk"]);
+    expect(source.archived).toBe(false);
+  });
+});
+
+describe("19. fork racing a concurrent edit to the source converges", () => {
+  test("a fork is a snapshot, not a live link -- concurrent source edits never leak into it", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    addItem(base, listId, "Milk", "alice");
+    const docA = cloneDoc(base);
+    const docB = cloneDoc(base);
+
+    const forkId = forkList(docA, listId, "Dinner Party", "alice");
+    addItem(docB, listId, "Eggs", "bob"); // concurrent edit to the source itself
+
+    syncDocs(docA, docB);
+
+    for (const doc of [docA, docB]) {
+      const household = readHousehold(doc);
+      const source = household.lists.find((l) => l.id === listId)!;
+      const fork = household.lists.find((l) => l.id === forkId)!;
+      // The concurrent addition lands in the source, as expected...
+      expect(source.items.map((i) => i.text).sort()).toEqual(["Eggs", "Milk"]);
+      // ...but never in the fork, which only ever saw "Milk" at the moment
+      // it was created.
+      expect(fork.items.map((i) => i.text)).toEqual(["Milk"]);
+    }
+    expect(statesConverged(docA, docB)).toBe(true);
   });
 });

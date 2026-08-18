@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from "$app/navigation";
 	import type { HouseholdSession } from "$lib/sync/household-session";
 	import { getOrJoinSession } from "$lib/sync/session-cache";
 	import type { PresenceEntry } from "$lib/sync/presence-store";
@@ -10,9 +11,17 @@
 
 	// See h/[roomId]/+page.svelte's comment on why the typed PageProps params
 	// are used here instead of $app/state's broadly-typed page.params.
+	//
+	// Both MUST be $derived, not plain const: SvelteKit reuses this same
+	// component instance (doesn't remount) when navigating between two
+	// URLs that match this route's shape -- e.g. forking a list calls
+	// goto() from a list page to a *different* list page in the same
+	// room. A plain const only ever captures params as they were at first
+	// mount, so the page would keep silently rendering the list you forked
+	// FROM forever after, while the address bar shows the new one.
 	let { params }: PageProps = $props();
-	const roomId = params.roomId;
-	const listId = params.listId;
+	let roomId = $derived(params.roomId);
+	let listId = $derived(params.listId);
 
 	let session = $state<HouseholdSession | null>(null);
 	let household = $state<HouseholdSnapshot | null>(null);
@@ -28,6 +37,18 @@
 
 	let list = $derived<ListSnapshot | null>(
 		household?.lists.find((l) => l.id === listId) ?? null,
+	);
+
+	// A fork's source list is looked up by id, not stored redundantly on the
+	// fork itself -- nothing in this app is ever hard-deleted, so the lookup
+	// always succeeds even if the source was later archived.
+	let forkSourceName = $derived(
+		list?.forkedFromListId
+			? (household?.lists.find((l) => l.id === list?.forkedFromListId)?.name ?? "a removed list")
+			: null,
+	);
+	let forkNewCount = $derived(
+		list?.items.filter((i) => !i.archived && !i.copiedInFork).length ?? 0,
 	);
 
 	// itemId -> presence color, briefly set when a *remote* peer's Awareness
@@ -104,6 +125,27 @@
 	function restoreItem(itemId: string): void {
 		session?.unarchiveItem(listId, itemId);
 	}
+
+	// Forking is a snapshot, not a live link -- the new list is completely
+	// independent from this instant on. See doc-schema's forkList() for why
+	// that's the whole point: draft freely, then merge back or discard with
+	// zero risk to the list you started from.
+	function fork(): void {
+		if (!session || !list) return;
+		const newId = session.forkList(listId, `Fork of ${list.name}`);
+		void goto(`/h/${roomId}/${newId}`);
+	}
+
+	function merge(): void {
+		if (!session) return;
+		const { mergedCount } = session.mergeFork(listId);
+		void goto(`/h/${roomId}?merged=${mergedCount}`);
+	}
+
+	function discardFork(): void {
+		session?.archiveList(listId);
+		void goto(`/h/${roomId}`);
+	}
 </script>
 
 <main class="app-shell">
@@ -111,6 +153,18 @@
 
 	{#if list}
 		<h1>{list.name}</h1>
+
+		{#if forkSourceName}
+			<div class="card fork-banner">
+				<p>🍴 this is a fork of <strong>{forkSourceName}</strong></p>
+				<div class="fork-actions">
+					<button class="btn btn-teal btn-small" onclick={merge} disabled={forkNewCount === 0}>
+						merge back{forkNewCount > 0 ? ` (${forkNewCount} new)` : ""}
+					</button>
+					<button class="btn btn-ghost btn-small" onclick={discardFork}>discard fork</button>
+				</div>
+			</div>
+		{/if}
 
 		<PresenceAvatars entries={presence} />
 
@@ -159,9 +213,10 @@
 			<p class="empty">nothing here yet.</p>
 		{/if}
 
-		<button class="btn btn-ghost activity-button" onclick={() => (showActivity = !showActivity)}>
-			activity
-		</button>
+		<div class="list-actions">
+			<button class="btn btn-ghost" onclick={() => (showActivity = !showActivity)}>activity</button>
+			<button class="btn btn-ghost" onclick={fork}>fork this list</button>
+		</div>
 
 		{#if showActivity}
 			<ActivityPanel
@@ -257,9 +312,28 @@
 		font-size: 0.75rem;
 		color: var(--text-secondary);
 	}
-	.activity-button {
-		width: 100%;
+	.list-actions {
+		display: flex;
+		gap: 0.5rem;
 		margin-top: 1.25rem;
+	}
+	.list-actions .btn {
+		flex: 1;
+	}
+	.fork-banner {
+		padding: 1rem 1.25rem;
+		margin-bottom: 1rem;
+	}
+	.fork-banner p {
+		margin-bottom: 0.75rem;
+	}
+	.fork-actions {
+		display: flex;
+		gap: 0.5rem;
+	}
+	.btn-small {
+		padding: 8px 16px;
+		font-size: 0.85rem;
 	}
 	.edit-input {
 		flex: 1;

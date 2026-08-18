@@ -25,6 +25,12 @@ export interface ListSnapshot {
   deletedAt: number | null;
   createdBy: string;
   createdAt: number;
+  // Non-null only for lists created by forkList(). A fork is a genuinely
+  // independent list from the moment it's created -- these are just
+  // lineage bookkeeping (who it came from, and when), not a live link of
+  // any kind.
+  forkedFromListId: string | null;
+  forkedAt: number | null;
   items: ItemSnapshot[];
 }
 
@@ -33,6 +39,12 @@ export interface ItemSnapshot {
   text: string;
   checked: boolean;
   checkedBy: string | null;
+  // True only for items forkList() copied in from the source at fork time.
+  // mergeFork() uses this (not addedAt vs. forkedAt) to find "new since the
+  // fork" items -- Date.now() is only millisecond-resolution, and a fork
+  // followed immediately by an add can land in the same millisecond, so a
+  // timestamp comparison is the wrong tool for an exact-membership check.
+  copiedInFork: boolean;
   order: string;
   archived: boolean;
   deletedAt: number | null;
@@ -184,6 +196,8 @@ export function createList(doc: Y.Doc, name: string, createdBy: string): string 
     list.set("deletedAt", null);
     list.set("createdBy", createdBy);
     list.set("createdAt", now);
+    list.set("forkedFromListId", null);
+    list.set("forkedAt", null);
     list.set(ITEMS_KEY, new Y.Map());
     listsMap.set(id, list);
     appendActivity(doc, {
@@ -197,6 +211,100 @@ export function createList(doc: Y.Doc, name: string, createdBy: string): string 
     });
   });
   return id;
+}
+
+// A fork is a snapshot, not a live link: it copies every current
+// (non-archived) item's text and checked state into a brand-new,
+// completely independent list. From this instant the two lists evolve
+// separately -- nothing done in one is ever reflected in the other except
+// through an explicit mergeFork() call. This is the "try a version without
+// touching the real list" primitive: draft freely, then either bring the
+// new items back with mergeFork() or throw the whole fork away with
+// archiveList(), and the source list was never at risk either way.
+export function forkList(doc: Y.Doc, sourceListId: string, name: string, actorLabel: string): string {
+  const sourceList = getListRecord(doc, sourceListId);
+  const sourceListName = sourceList.get("name") as string;
+  const sourceItemsMap = sourceList.get(ITEMS_KEY) as Y.Map<YRecord>;
+  const sourceItems = sortedByOrder(sourceItemsMap).filter((r) => !(r.get("archived") as boolean));
+
+  const id = uuidv4();
+  const listsMap = getListsMap(doc);
+  const now = Date.now();
+
+  doc.transact(() => {
+    const list: Y.Map<unknown> = new Y.Map();
+    list.set("id", id);
+    list.set("name", name);
+    list.set("order", nextOrderKey(listsMap));
+    list.set("archived", false);
+    list.set("deletedAt", null);
+    list.set("createdBy", actorLabel);
+    list.set("createdAt", now);
+    list.set("forkedFromListId", sourceListId);
+    list.set("forkedAt", now);
+    const itemsMap: Y.Map<unknown> = new Y.Map();
+    list.set(ITEMS_KEY, itemsMap);
+    listsMap.set(id, list);
+
+    for (const source of sourceItems) {
+      const itemId = uuidv4();
+      const item: Y.Map<unknown> = new Y.Map();
+      item.set("id", itemId);
+      item.set("text", source.get("text") as string);
+      // Checked state carries over -- a fork is a snapshot of the list as
+      // it stood, not a fresh blank copy.
+      item.set("checked", source.get("checked") as boolean);
+      item.set("checkedBy", source.get("checkedBy") as string | null);
+      item.set("copiedInFork", true);
+      item.set("order", nextOrderKey(itemsMap as Y.Map<YRecord>));
+      item.set("archived", false);
+      item.set("deletedAt", null);
+      // addedBy/addedAt are reset to the fork and the person forking, not
+      // preserved from the source -- purely provenance now that mergeFork()
+      // uses copiedInFork (not a timestamp comparison) to find new items.
+      item.set("addedBy", actorLabel);
+      item.set("addedAt", now);
+      item.set("updatedAt", now);
+      itemsMap.set(itemId, item);
+    }
+
+    appendActivity(doc, {
+      type: "list.created",
+      actorLabel,
+      listId: id,
+      listName: name,
+      itemId: null,
+      itemText: null,
+      previousText: sourceListName,
+    });
+  });
+
+  return id;
+}
+
+// Brings every item added to a fork *after* it was created back into the
+// source list as ordinary new items, then archives the fork -- merging
+// concludes it the same way discarding would, just with its new items kept.
+// Deliberately simple for v1: only new additions merge, not edits/checks
+// made to the copied-over items or removals -- an unambiguous "what's new"
+// diff, not a general three-way merge UI this app doesn't need.
+export function mergeFork(doc: Y.Doc, forkListId: string, actorLabel: string): { mergedCount: number } {
+  const forkRecord = getListRecord(doc, forkListId);
+  const sourceListId = forkRecord.get("forkedFromListId") as string | null;
+  if (!sourceListId) throw new Error(`List ${forkListId} is not a fork`);
+  const forkItemsMap = forkRecord.get(ITEMS_KEY) as Y.Map<YRecord>;
+  const newItems = sortedByOrder(forkItemsMap).filter(
+    (r) => !(r.get("archived") as boolean) && !(r.get("copiedInFork") as boolean | undefined),
+  );
+
+  doc.transact(() => {
+    for (const item of newItems) {
+      addItem(doc, sourceListId, item.get("text") as string, actorLabel);
+    }
+    archiveList(doc, forkListId, actorLabel);
+  });
+
+  return { mergedCount: newItems.length };
 }
 
 export function renameList(doc: Y.Doc, listId: string, name: string, actorLabel: string): void {
@@ -290,6 +398,7 @@ export function addItem(doc: Y.Doc, listId: string, text: string, addedBy: strin
     item.set("text", text);
     item.set("checked", false);
     item.set("checkedBy", null);
+    item.set("copiedInFork", false);
     item.set("order", nextOrderKey(itemsMap));
     item.set("archived", false);
     item.set("deletedAt", null);
@@ -426,6 +535,7 @@ function readItem(record: YRecord): ItemSnapshot {
     text: record.get("text") as string,
     checked: record.get("checked") as boolean,
     checkedBy: (record.get("checkedBy") as string | null) ?? null,
+    copiedInFork: (record.get("copiedInFork") as boolean | undefined) ?? false,
     order: record.get("order") as string,
     archived: record.get("archived") as boolean,
     deletedAt: record.get("deletedAt") as number | null,
@@ -445,6 +555,8 @@ function readList(record: YRecord): ListSnapshot {
     deletedAt: (record.get("deletedAt") as number | null) ?? null,
     createdBy: record.get("createdBy") as string,
     createdAt: record.get("createdAt") as number,
+    forkedFromListId: (record.get("forkedFromListId") as string | null) ?? null,
+    forkedAt: (record.get("forkedAt") as number | null) ?? null,
     items: sortedByOrder(itemsMap).map(readItem),
   };
 }

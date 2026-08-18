@@ -12,6 +12,8 @@ export interface HouseholdSession {
   renameList(listId: string, name: string): void;
   archiveList(listId: string): void;
   unarchiveList(listId: string): void;
+  forkList(sourceListId: string, name: string): string;
+  mergeFork(forkListId: string): { mergedCount: number };
   addItem(listId: string, text: string): string;
   setItemText(listId: string, itemId: string, text: string): void;
   setItemChecked(listId: string, itemId: string, checked: boolean): void;
@@ -70,6 +72,8 @@ function wrapSession(roomId: string, sync: Awaited<ReturnType<typeof connectHous
     renameList: (listId, name) => schema.renameList(sync.doc, listId, name, getDeviceLabel()),
     archiveList: (listId) => schema.archiveList(sync.doc, listId, getDeviceLabel()),
     unarchiveList: (listId) => schema.unarchiveList(sync.doc, listId, getDeviceLabel()),
+    forkList: (sourceListId, name) => schema.forkList(sync.doc, sourceListId, name, getDeviceLabel()),
+    mergeFork: (forkListId) => schema.mergeFork(sync.doc, forkListId, getDeviceLabel()),
     addItem: (listId, text) => {
       const id = schema.addItem(sync.doc, listId, text, getDeviceLabel());
       pingTouch(id);

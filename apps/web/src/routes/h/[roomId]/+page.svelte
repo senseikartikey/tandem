@@ -25,6 +25,7 @@
 	let newListName = $state("");
 	let showInvite = $state(false);
 	let showRemovedLists = $state(false);
+	let mergedCount = $state<number | null>(null);
 	let inviteLink = $state("");
 	let inviteQr = $state("");
 	let inviteCode = $state("");
@@ -35,12 +36,17 @@
 
 	onMount(async () => {
 		const newName = page.url.searchParams.get("new");
+		const merged = page.url.searchParams.get("merged");
 		if (newName) {
 			session = await createHouseholdSession(roomId, newName);
 			cacheSession(roomId, session);
 			replaceState(`/h/${roomId}`, {});
 		} else {
 			session = await getOrJoinSession(roomId);
+			if (merged !== null) {
+				mergedCount = Number(merged);
+				replaceState(`/h/${roomId}`, {});
+			}
 		}
 
 		unsubscribe = session.household.subscribe(({ household: snapshot, activity: entries }) => {
@@ -120,6 +126,17 @@
 	{#if household}
 		<h1>{household.name}</h1>
 
+		{#if mergedCount !== null}
+			<div class="card merged-banner">
+				<p>
+					{mergedCount === 0
+						? "fork merged -- nothing new to bring over."
+						: `merged ${mergedCount} new ${mergedCount === 1 ? "item" : "items"} back.`}
+				</p>
+				<button class="btn-close" onclick={() => (mergedCount = null)}>close</button>
+			</div>
+		{/if}
+
 		<PresenceAvatars entries={presence} />
 
 		<YourName />
@@ -128,7 +145,12 @@
 			{#each household.lists.filter((l) => !l.archived) as list, i (list.id)}
 				<div class="card card-flat list-row">
 					<a class="list-card" href={`/h/${roomId}/${list.id}`}>
-						<span class="list-name">{list.name}</span>
+						<span class="list-name-wrap">
+							<span class="list-name">{list.name}</span>
+							{#if list.forkedFromListId}
+								<span class="forked-tag">🍴 fork</span>
+							{/if}
+						</span>
 						<span class="count" style={`background:${["#4ecdc4", "#ffe566", "#f9a8b8", "#c4b5fd"][i % 4]}`}>
 							{list.items.filter((i) => !i.archived).length}
 						</span>
@@ -255,8 +277,29 @@
 	.list-row .remove:hover {
 		color: var(--color-primary);
 	}
+	.list-name-wrap {
+		display: flex;
+		flex-direction: column;
+	}
 	.list-name {
 		font-weight: 700;
+	}
+	.forked-tag {
+		font-size: 0.72rem;
+		font-weight: 600;
+		color: var(--text-secondary);
+	}
+	.merged-banner {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		padding: 0.85rem 1.1rem;
+		margin-bottom: 1rem;
+	}
+	.merged-banner p {
+		font-weight: 600;
+		color: var(--text-primary);
 	}
 	.count {
 		display: inline-flex;
