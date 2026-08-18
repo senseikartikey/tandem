@@ -1,6 +1,6 @@
 # Tandem
 
-**Live**: [web-navy-nine-12.vercel.app](https://web-navy-nine-12.vercel.app) — sync server on [Render](https://tandem-todo-list.onrender.com/healthz), data on [Turso](https://turso.tech).
+**Live**: [tandem-lists.vercel.app](https://tandem-lists.vercel.app) — sync server on [Render](https://tandem-todo-list.onrender.com/healthz), data on [Turso](https://turso.tech).
 
 Shared lists (groceries, chores, packing lists, to-dos) that are **genuinely
 offline-first** — not just "installable." Add or check off an item with zero
