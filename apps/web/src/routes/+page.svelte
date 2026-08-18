@@ -158,6 +158,17 @@
 		<section class="features">
 			<h2>why tandem</h2>
 			<div class="feature-grid">
+				<div class="feature-card feature-lead card">
+					<span class="feature-icon">🍴</span>
+					<h3>fork a list</h3>
+					<p>
+						Draft a version without touching the real list — reorganize it, plan a
+						different menu, try anything. Merge the new items back when you're happy
+						with it, or throw the whole thing away. Either way, the shared list was
+						never at risk. No other shared-list app can do this — it's only possible
+						because of how the sync itself works.
+					</p>
+				</div>
 				<div class="feature-card card">
 					<span class="feature-icon">📶</span>
 					<h3>works with no signal</h3>
@@ -395,6 +406,10 @@
 	.feature-card {
 		padding: 1.25rem;
 	}
+	.feature-lead {
+		grid-column: 1 / -1;
+		background: var(--color-yellow);
+	}
 	.feature-icon {
 		font-size: 1.3rem;
 		display: inline-block;
@@ -404,6 +419,9 @@
 		font-size: 0.92rem;
 		font-weight: 800;
 		margin-bottom: 0.35rem;
+	}
+	.feature-lead h3 {
+		font-size: 1.05rem;
 	}
 	.feature-card p {
 		font-size: 0.82rem;
