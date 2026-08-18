@@ -3,6 +3,7 @@ import { WebSocketServer } from "ws";
 import { handleHttpRequest } from "./http.js";
 import { openRoomStore, type RoomStore } from "./persistence.js";
 import { RoomRegistry } from "./rooms.js";
+import { handleSignalingConnection } from "./signaling.js";
 import { handleConnection } from "./ws-handler.js";
 
 export interface TandemServerOptions {
@@ -39,9 +40,23 @@ export async function createTandemServer(options: TandemServerOptions): Promise<
   // y-websocket's WebsocketProvider default of `serverUrl + '/' + roomname`
   // -- so the standard client works with just `new WebsocketProvider(url,
   // roomId, doc)`, no custom query-param wiring needed on the client side.
+  // /signaling is a reserved path checked first, ahead of the room-id
+  // fallback, for the separate WebRTC signaling relay (see signaling.ts) --
+  // a generic pub/sub protocol unrelated to any single room, so it gets
+  // its own WebSocketServer instance rather than being shoehorned into the
+  // room one.
   const wss = new WebSocketServer({ noServer: true });
+  const signalingWss = new WebSocketServer({ noServer: true });
   httpServer.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "", "http://localhost");
+
+    if (url.pathname === "/signaling") {
+      signalingWss.handleUpgrade(req, socket, head, (ws) => {
+        handleSignalingConnection(ws);
+      });
+      return;
+    }
+
     const roomId = url.pathname.replace(/^\/+|\/+$/g, "");
     if (!roomId) {
       socket.destroy();
@@ -73,6 +88,7 @@ export async function createTandemServer(options: TandemServerOptions): Promise<
           await registry.shutdown();
           await store.close();
           wss.close();
+          signalingWss.close();
           await new Promise<void>((res) => httpServer.close(() => res()));
         },
       });

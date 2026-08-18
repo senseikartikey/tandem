@@ -32,9 +32,11 @@ out-of-order update delivery, and a randomized fuzz test.
 ```
 apps/web/       SvelteKit PWA (+ Capacitor for iOS/Android). Static build,
                  no server-side rendering -- Yjs/IndexedDB are client-only.
-apps/server/     Node WebSocket relay + SQLite persistence. One image, used
-                 identically by self-hosted deployments and any hosted
-                 instance -- see docker/.
+apps/server/     Node WebSocket relay + SQLite persistence, plus a
+                 y-webrtc-compatible signaling relay (see signaling.ts) for
+                 direct peer-to-peer sync. One image, used identically by
+                 self-hosted deployments and any hosted instance -- see
+                 docker/.
 packages/
   doc-schema/    The shared Yjs document shape + mutation/read helpers.
                  Imported by both web and server so they can't drift on
@@ -51,6 +53,18 @@ uses a fractional-index string instead. Deletes are soft (`archived` +
 `deletedAt` fields, never a structural removal) specifically to avoid a
 nasty CRDT edge case: a peer deleting an item while another peer
 concurrently edits it.
+
+**Sync transport**: two providers on the same `Y.Doc`, not one. A WebSocket
+relay (`apps/server`) is the always-available fallback; `y-webrtc` is a
+second, additive transport that connects two devices directly when they
+can reach each other (same wifi/hotspot, or NAT traversal succeeds) --
+once that connection is up, sync keeps working even if the relay goes
+down entirely, verified by killing the relay process mid-session and
+watching two browser tabs keep syncing over the surviving WebRTC
+connection. Signaling (the brief handshake WebRTC needs to let two peers
+find each other) is self-hosted too, not pointed at y-webrtc's default
+public signaling servers -- two of the three are Heroku apps, and Heroku
+killed its free tier in 2022.
 
 **Sharing**: no accounts. An invite is a link with the room ID in the URL
 **fragment** (`#room=...`), which browsers never send to the server —
@@ -120,11 +134,14 @@ The correctness claim is tested in layers:
 2. **`apps/server`** — integration tests against the *real* WS relay +
    SQLite, including a server-restart test proving persisted data survives
    and a fresh device can join and get full history without the original
-   device being online.
+   device being online; separate tests against the real signaling relay
+   (subscribe/publish/unsubscribe fan-out over real WebSocket connections).
 3. Manually verified end-to-end in a real browser across two separate
    origins (simulating two real devices): create a household, add items,
    invite a second device via the real link, and watch a change made on
-   one propagate live to the other with zero reload.
+   one propagate live to the other with zero reload -- including killing
+   the relay server process entirely mid-session and confirming the two
+   devices kept syncing over WebRTC alone.
 
 ```bash
 pnpm --filter @tandem/doc-schema test
@@ -142,9 +159,8 @@ pnpm --filter @tandem/web check
 - Rich item metadata (quantity, category, notes), list templates, push
   notifications, drag-and-drop reordering UI (the underlying fractional-index
   data model already supports it).
-- `y-webrtc` as an additional peer-to-peer transport, wire-format
-  encryption of relayed updates (the protocol is designed to support this
-  later without a breaking change).
+- Wire-format encryption of relayed updates (the protocol is designed to
+  support this later without a breaking change).
 
 ## License
 
