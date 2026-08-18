@@ -1,6 +1,6 @@
 # Tandem
 
-**Live**: [web-navy-nine-12.vercel.app](https://web-navy-nine-12.vercel.app) — sync server on [Fly.io](https://tandem-sync.fly.dev/healthz).
+**Live**: [web-navy-nine-12.vercel.app](https://web-navy-nine-12.vercel.app) — sync server on [Render](https://tandem-todo-list.onrender.com/healthz), data on [Turso](https://turso.tech).
 
 Shared lists (groceries, chores, packing lists, to-dos) that are **genuinely
 offline-first** — not just "installable." Add or check off an item with zero
@@ -78,12 +78,27 @@ serve the static output from any host (Vercel, Netlify, Cloudflare Pages,
 nginx, whatever you like — `apps/web`'s build is intentionally decoupled
 from how `apps/server` is hosted).
 
-The live instance above runs the exact same setup: `apps/server` on Fly.io
-via `fly.toml` (chosen specifically because Render's free tier has no
-persistent disk — `apps/server` needs a real volume for the SQLite file,
-which Fly's free allowance includes), `apps/web` on Vercel via the root
-`vercel.json` (deployed from the repo root, not `apps/web` alone, since the
-build needs the pnpm workspace context to resolve `@tandem/doc-schema`).
+The live instance above runs the exact same setup: `apps/server` on Render
+(free tier, no card, deployed straight from this repo's `docker/Dockerfile.server`),
+`apps/web` on Vercel via the root `vercel.json` (deployed from the repo
+root, not `apps/web` alone, since the build needs the pnpm workspace
+context to resolve `@tandem/doc-schema`).
+
+Storage is [Turso](https://turso.tech) (hosted, libSQL-compatible SQLite)
+rather than a local file, via `@libsql/client` — this is what makes Render's
+free tier viable at all: its free web services have no persistent disk and
+sleep after 15 minutes idle, so anything written to local disk would vanish
+on the next cold start. Decoupling storage from compute means that no
+longer matters; a fresh instance just reconnects to the same Turso database.
+`DATABASE_URL`/`DATABASE_AUTH_TOKEN` unset falls back to a local
+`file:./data/tandem.sqlite` (plain SQLite, no account needed) — this is
+what local dev and the Docker Compose self-host setup below use by default.
+
+This project's first deployment was actually on Fly.io, not Render — moved
+after Fly ended its free trial and started requiring a card. Worth knowing
+if you're picking a host yourself: free-tier terms on all of these
+platforms change often enough that it's worth verifying current pricing
+before committing, not just trusting an older README (including this one).
 
 ## Mobile
 

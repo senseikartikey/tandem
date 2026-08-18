@@ -1,6 +1,12 @@
 # Reference self-host deployment: one server container + one named volume
-# for the SQLite file. Point your own build of apps/web at this server via
+# for a local SQLite file (via libSQL's file: URL scheme -- no external
+# account needed). Point your own build of apps/web at this server via
 # VITE_SYNC_SERVER_URL (see apps/web/README or the root README).
+#
+# Prefer a hosted Turso database instead of the local volume? Drop the
+# `volumes:` line below and set DATABASE_URL to your libsql://... URL plus
+# DATABASE_AUTH_TOKEN -- useful if you're deploying to a host with no
+# persistent disk (see the root README's "Live" section for why).
 #
 # Usage: docker compose -f docker/docker-compose.yml up -d
 services:
@@ -12,7 +18,7 @@ services:
       - "1234:1234"
     environment:
       PORT: 1234
-      DATABASE_PATH: /data/tandem.sqlite
+      DATABASE_URL: file:/data/tandem.sqlite
       # MAX_ROOM_BYTES: "5242880"
     volumes:
       - tandem-data:/data
