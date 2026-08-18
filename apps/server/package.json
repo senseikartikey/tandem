@@ -11,8 +11,8 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@libsql/client": "^0.14.0",
     "@tandem/doc-schema": "workspace:*",
-    "better-sqlite3": "^11.7.0",
     "lib0": "^0.2.99",
     "uuid": "^11.0.0",
     "ws": "^8.18.0",
@@ -20,7 +20,6 @@
     "yjs": "^13.6.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
     "@types/ws": "^8.5.13",
     "tsx": "^4.19.0",

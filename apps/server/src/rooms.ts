@@ -33,18 +33,39 @@ function broadcast(room: Room, buf: Uint8Array, exclude: WebSocket): void {
 
 export class RoomRegistry {
   private rooms = new Map<string, Room>();
+  // load() is now a network call (Turso), not a synchronous disk read, so
+  // getOrCreate is async -- which opens a real race that didn't exist when
+  // this was synchronous: two connections for the same brand-new room can
+  // both see it missing from `rooms` before either finishes loading. Without
+  // this in-flight map, both would build a Room independently and the
+  // second's Map.set would silently win, dropping whatever the first
+  // connection did to its copy before the two diverged.
+  private pending = new Map<string, Promise<Room>>();
   private evictTimer: ReturnType<typeof setInterval>;
 
   constructor(private store: RoomStore) {
     this.evictTimer = setInterval(() => this.evictIdle(), 60_000);
   }
 
-  getOrCreate(roomId: string): Room {
+  async getOrCreate(roomId: string): Promise<Room> {
     const existing = this.rooms.get(roomId);
     if (existing) return existing;
 
+    const inFlight = this.pending.get(roomId);
+    if (inFlight) return inFlight;
+
+    const creation = this.createRoom(roomId);
+    this.pending.set(roomId, creation);
+    try {
+      return await creation;
+    } finally {
+      this.pending.delete(roomId);
+    }
+  }
+
+  private async createRoom(roomId: string): Promise<Room> {
     const doc = new Y.Doc();
-    const persisted = this.store.load(roomId);
+    const persisted = await this.store.load(roomId);
     if (persisted) Y.applyUpdate(doc, persisted, "persistence-load");
 
     const room: Room = {
@@ -117,7 +138,15 @@ export class RoomRegistry {
     if (room.persistTimer) return;
     room.persistTimer = setTimeout(() => {
       room.persistTimer = null;
-      this.store.save(room.id, Y.encodeStateAsUpdate(room.doc));
+      // Best-effort background write -- not awaited by anything upstream of
+      // this timer, but a real network call now (Turso), not a local disk
+      // write, so a transient failure must be caught here or it becomes an
+      // unhandled rejection that crashes the process. The next mutation
+      // reschedules a fresh save anyway, so a dropped write here just means
+      // "persist a little later," not lost data.
+      this.store
+        .save(room.id, Y.encodeStateAsUpdate(room.doc))
+        .catch((err) => console.error(`failed to persist room ${room.id}:`, err));
     }, PERSIST_DEBOUNCE_MS);
   }
 
@@ -125,23 +154,26 @@ export class RoomRegistry {
     const now = Date.now();
     for (const [roomId, room] of this.rooms) {
       if (room.conns.size === 0 && now - room.lastActivity > IDLE_EVICT_MS) {
-        this.flush(room);
+        this.flush(room).catch((err) => console.error(`failed to flush room ${room.id}:`, err));
         room.doc.destroy();
         this.rooms.delete(roomId);
       }
     }
   }
 
-  private flush(room: Room): void {
+  private async flush(room: Room): Promise<void> {
     if (room.persistTimer) {
       clearTimeout(room.persistTimer);
       room.persistTimer = null;
     }
-    this.store.save(room.id, Y.encodeStateAsUpdate(room.doc));
+    await this.store.save(room.id, Y.encodeStateAsUpdate(room.doc));
   }
 
-  shutdown(): void {
+  // Awaited by TandemServer.close() before it closes the store connection --
+  // unlike the background saves above, a graceful shutdown must not return
+  // until every pending write has actually landed.
+  async shutdown(): Promise<void> {
     clearInterval(this.evictTimer);
-    for (const room of this.rooms.values()) this.flush(room);
+    await Promise.all(Array.from(this.rooms.values()).map((room) => this.flush(room)));
   }
 }

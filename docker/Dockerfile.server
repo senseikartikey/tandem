@@ -20,9 +20,6 @@ COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY packages/doc-schema/package.json packages/doc-schema/package.json
 COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json apps/web/package.json
-# better-sqlite3 needs a native build toolchain at install time.
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
-	&& rm -rf /var/lib/apt/lists/*
 RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
@@ -36,7 +33,10 @@ WORKDIR /repo
 COPY --from=build /repo ./
 ENV NODE_ENV=production
 ENV PORT=1234
-ENV DATABASE_PATH=/data/tandem.sqlite
+# Self-hosters: leave this pointed at the mounted volume for a local SQLite
+# file (no external account needed), or override with a libsql://... Turso
+# URL (+ DATABASE_AUTH_TOKEN) if you'd rather not manage a volume at all.
+ENV DATABASE_URL=file:/data/tandem.sqlite
 VOLUME ["/data"]
 EXPOSE 1234
 WORKDIR /repo/apps/server

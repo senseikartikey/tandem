@@ -7,7 +7,10 @@ import { handleConnection } from "./ws-handler.js";
 
 export interface TandemServerOptions {
   port: number;
-  databasePath: string;
+  // libSQL URL -- "file:..." for local/self-hosted, "libsql://..." for a
+  // hosted Turso database. See persistence.ts for why.
+  dbUrl: string;
+  dbAuthToken?: string;
   maxRoomBytes?: number;
 }
 
@@ -20,8 +23,8 @@ export interface TandemServer {
   close(): Promise<void>;
 }
 
-export function createTandemServer(options: TandemServerOptions): Promise<TandemServer> {
-  const store = openRoomStore(options.databasePath);
+export async function createTandemServer(options: TandemServerOptions): Promise<TandemServer> {
+  const store = await openRoomStore({ url: options.dbUrl, authToken: options.dbAuthToken });
   const registry = new RoomRegistry(store);
   const maxRoomBytes = options.maxRoomBytes ?? 5 * 1024 * 1024;
 
@@ -45,8 +48,13 @@ export function createTandemServer(options: TandemServerOptions): Promise<Tandem
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => {
-      const room = registry.getOrCreate(roomId);
-      handleConnection(ws, room, registry, maxRoomBytes);
+      registry.getOrCreate(roomId).then(
+        (room) => handleConnection(ws, room, registry, maxRoomBytes),
+        (err) => {
+          console.error(`failed to load room ${roomId}:`, err);
+          ws.close();
+        },
+      );
     });
   });
 
@@ -59,13 +67,14 @@ export function createTandemServer(options: TandemServerOptions): Promise<Tandem
         registry,
         store,
         port: boundPort,
-        close: () =>
-          new Promise<void>((res) => {
-            registry.shutdown();
-            store.close();
-            wss.close();
-            httpServer.close(() => res());
-          }),
+        close: async () => {
+          // Order matters: flush every room's pending write before closing
+          // the DB client, then stop accepting new connections.
+          await registry.shutdown();
+          await store.close();
+          wss.close();
+          await new Promise<void>((res) => httpServer.close(() => res()));
+        },
       });
     });
   });
