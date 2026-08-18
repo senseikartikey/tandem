@@ -290,7 +290,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2rem;
-		padding: 2rem 0 3rem;
+		padding: 2rem 0 1rem;
 	}
 	.hero-copy {
 		max-width: 640px;
@@ -487,7 +487,7 @@
 			flex-direction: row;
 			align-items: center;
 			justify-content: space-between;
-			padding: 3.5rem 0 4.5rem;
+			padding: 3.5rem 0 1.5rem;
 		}
 		.hero-copy h1 {
 			font-size: clamp(2.4rem, 3.6vw, 3.4rem);
