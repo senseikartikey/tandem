@@ -3,6 +3,7 @@ import { getDeviceLabel } from "$lib/local-households";
 import { connectHousehold } from "./provider.js";
 import { householdStore, type HouseholdStoreValue, type Readable } from "./household-store.js";
 import { presenceStore, type PresenceEntry } from "./presence-store.js";
+import type * as Y from "yjs";
 
 export interface HouseholdSession {
   roomId: string;
@@ -19,6 +20,14 @@ export interface HouseholdSession {
   setItemChecked(listId: string, itemId: string, checked: boolean): void;
   archiveItem(listId: string, itemId: string): void;
   unarchiveItem(listId: string, itemId: string): void;
+  reorderItem(listId: string, itemId: string, beforeItemId: string | null, afterItemId: string | null): void;
+  // Returns the item's live, shared Y.Text for an editor to bind directly --
+  // the one deliberate break from this interface's snapshot-everything
+  // pattern (every other method takes/returns plain values). A collaborative
+  // note field needs the actual CRDT type wired into the DOM so keystrokes
+  // become real Y.Text ops; a wrapper that took a whole string and diffed it
+  // itself would just be reinventing what the binding library already does.
+  getItemNoteText(listId: string, itemId: string): Y.Text;
   destroy(): void;
 }
 
@@ -95,6 +104,14 @@ function wrapSession(roomId: string, sync: Awaited<ReturnType<typeof connectHous
       schema.unarchiveItem(sync.doc, listId, itemId, getDeviceLabel());
       pingTouch(itemId);
     },
+    // No pingTouch here, on purpose -- same reasoning doc-schema's
+    // reorderItem already documents for why it skips the activity log:
+    // dragging to a new position isn't an attribution-worthy content
+    // change, and flashing the item mid-drag would just be visual noise
+    // layered on top of the drag animation already showing the move.
+    reorderItem: (listId, itemId, beforeItemId, afterItemId) =>
+      schema.reorderItem(sync.doc, listId, itemId, beforeItemId, afterItemId, getDeviceLabel()),
+    getItemNoteText: (listId, itemId) => schema.getItemNoteText(sync.doc, listId, itemId),
     destroy: () => sync.destroy(),
   };
 }

@@ -37,6 +37,12 @@ export interface ListSnapshot {
 export interface ItemSnapshot {
   id: string;
   text: string;
+  // Read-only string snapshot of the live Y.Text below -- for display/list
+  // rendering only. Editing must go through getItemNoteText()'s actual
+  // Y.Text handle, never by writing this field back (there's no setter on
+  // purpose: a plain string field can only ever be last-write-wins, which
+  // throws away the whole point of a note two people can type into at once).
+  note: string;
   checked: boolean;
   checkedBy: string | null;
   // True only for items forkList() copied in from the source at fork time.
@@ -249,8 +255,15 @@ export function forkList(doc: Y.Doc, sourceListId: string, name: string, actorLa
     for (const source of sourceItems) {
       const itemId = uuidv4();
       const item: Y.Map<unknown> = new Y.Map();
+      const sourceNote = source.get("note");
       item.set("id", itemId);
       item.set("text", source.get("text") as string);
+      // A new Y.Text with the same content, not the source's actual
+      // instance -- a shared type belongs to exactly one place in the doc
+      // tree; reusing it here would silently move it out of the source
+      // item rather than copy it. Matches every other field's copy-not-link
+      // semantics (see this function's module comment).
+      item.set("note", new Y.Text(sourceNote instanceof Y.Text ? sourceNote.toString() : ""));
       // Checked state carries over -- a fork is a snapshot of the list as
       // it stood, not a fresh blank copy.
       item.set("checked", source.get("checked") as boolean);
@@ -396,6 +409,7 @@ export function addItem(doc: Y.Doc, listId: string, text: string, addedBy: strin
     const now = Date.now();
     item.set("id", id);
     item.set("text", text);
+    item.set("note", new Y.Text());
     item.set("checked", false);
     item.set("checkedBy", null);
     item.set("copiedInFork", false);
@@ -508,6 +522,35 @@ export function unarchiveItem(doc: Y.Doc, listId: string, itemId: string, actorL
   });
 }
 
+// Returns the item's live, shared Y.Text for a caller to bind an editor to
+// directly -- deliberately not wrapped in a setter like every other item
+// field, because a note is meant to be typed into collaboratively, and
+// Y.Text's own insert/delete API *is* the merge-correct way to do that; a
+// setNoteText(doc, ..., fullString) function would only be able to replace
+// the whole field, which is exactly the last-write-wins behavior this
+// feature exists to avoid. No activity entry or updatedAt bump here either,
+// same reasoning reorderItem documents: live keystrokes aren't a discrete,
+// attribution-worthy event, and touching updatedAt on every keystroke would
+// make "recently changed" sort thrash while someone is mid-sentence.
+//
+// Falls back to lazily creating the field for items added before this
+// feature existed (addItem now always sets one). Two peers racing this
+// backfill on the same never-before-noted item is a real but harmless
+// edge case: Y.Map.set is last-write-wins on the "note" key, so the
+// loser's freshly-created Y.Text is simply discarded -- both started
+// empty, so nothing is lost. Re-reading after the transaction (rather
+// than returning the local reference created above) guarantees the
+// caller always binds to whichever instance actually won.
+export function getItemNoteText(doc: Y.Doc, listId: string, itemId: string): Y.Text {
+  const item = getItemRecord(doc, listId, itemId);
+  const existing = item.get("note");
+  if (existing instanceof Y.Text) return existing;
+  doc.transact(() => {
+    if (!(item.get("note") instanceof Y.Text)) item.set("note", new Y.Text());
+  });
+  return item.get("note") as Y.Text;
+}
+
 export function reorderItem(
   doc: Y.Doc,
   listId: string,
@@ -530,9 +573,11 @@ export function reorderItem(
 // --- Reads ---
 
 function readItem(record: YRecord): ItemSnapshot {
+  const noteField = record.get("note");
   return {
     id: record.get("id") as string,
     text: record.get("text") as string,
+    note: noteField instanceof Y.Text ? noteField.toString() : "",
     checked: record.get("checked") as boolean,
     checkedBy: (record.get("checkedBy") as string | null) ?? null,
     copiedInFork: (record.get("copiedInFork") as boolean | undefined) ?? false,

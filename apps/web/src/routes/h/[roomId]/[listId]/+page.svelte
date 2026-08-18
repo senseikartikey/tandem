@@ -3,11 +3,15 @@
 	import type { HouseholdSession } from "$lib/sync/household-session";
 	import { getOrJoinSession } from "$lib/sync/session-cache";
 	import type { PresenceEntry } from "$lib/sync/presence-store";
-	import type { ActivitySnapshot, HouseholdSnapshot, ListSnapshot } from "@tandem/doc-schema";
+	import type { ActivitySnapshot, HouseholdSnapshot, ItemSnapshot, ListSnapshot } from "@tandem/doc-schema";
 	import { onDestroy, onMount } from "svelte";
+	import { flip } from "svelte/animate";
+	import { dragHandle, dragHandleZone, type DndEvent } from "svelte-dnd-action";
+	import type * as Y from "yjs";
 	import type { PageProps } from "./$types";
 	import ActivityPanel from "./ActivityPanel.svelte";
 	import PresenceAvatars from "$lib/components/PresenceAvatars.svelte";
+	import { bindYText } from "$lib/actions/bind-y-text";
 
 	// See h/[roomId]/+page.svelte's comment on why the typed PageProps params
 	// are used here instead of $app/state's broadly-typed page.params.
@@ -31,6 +35,22 @@
 	let editingItemId = $state<string | null>(null);
 	let editingText = $state("");
 	let showActivity = $state(false);
+
+	// Only one note editor is ever open at a time -- getItemNoteText() is
+	// called fresh on expand, not eagerly for every item, since it's a live
+	// shared handle we want bound to exactly one mounted textarea.
+	let expandedNoteId = $state<string | null>(null);
+	let expandedNoteText = $state<Y.Text | null>(null);
+
+	function toggleNote(itemId: string): void {
+		if (expandedNoteId === itemId) {
+			expandedNoteId = null;
+			expandedNoteText = null;
+			return;
+		}
+		expandedNoteId = itemId;
+		expandedNoteText = session?.getItemNoteText(listId, itemId) ?? null;
+	}
 
 	let unsubscribe: (() => void) | null = null;
 	let unsubscribePresence: (() => void) | null = null;
@@ -73,6 +93,48 @@
 			}, 1500);
 		}
 	});
+
+	// A local, mutable mirror of list.items for svelte-dnd-action to animate
+	// during a drag -- it needs to own the array reference mid-gesture, which
+	// a value derived straight from the Yjs snapshot can't offer. Only
+	// resynced from the real snapshot while *not* dragging, so a remote
+	// peer's concurrent edit arriving mid-drag can't rewrite the array out
+	// from under the gesture in progress; it catches up the moment the drag
+	// ends either way, since finalize's own write feeds back through the
+	// same snapshot.
+	let dndItems = $state<ItemSnapshot[]>([]);
+	let dragging = $state(false);
+
+	$effect(() => {
+		if (dragging) return;
+		dndItems = list?.items.filter((i) => !i.archived) ?? [];
+	});
+
+	// Same stale-navigation hazard the file's top comment documents for
+	// listId itself -- without this, forking/switching lists while a note
+	// is open would keep the OLD item's Y.Text bound in the new list's DOM.
+	$effect(() => {
+		listId;
+		expandedNoteId = null;
+		expandedNoteText = null;
+	});
+
+	function handleConsider(e: CustomEvent<DndEvent<ItemSnapshot>>): void {
+		dragging = true;
+		dndItems = e.detail.items;
+	}
+
+	function handleFinalize(e: CustomEvent<DndEvent<ItemSnapshot>>): void {
+		dndItems = e.detail.items;
+		dragging = false;
+		if (!session) return;
+		const draggedId = e.detail.info.id;
+		const index = dndItems.findIndex((i) => i.id === draggedId);
+		if (index === -1) return;
+		const beforeId = index > 0 ? dndItems[index - 1].id : null;
+		const afterId = index < dndItems.length - 1 ? dndItems[index + 1].id : null;
+		session.reorderItem(listId, draggedId, beforeId, afterId);
+	}
 
 	onMount(async () => {
 		// Reuses the cached session from the parent /h/[roomId] page if this
@@ -179,37 +241,64 @@
 			<button class="btn" type="submit" disabled={!newItemText.trim()}>add</button>
 		</form>
 
-		<ul class="items">
-			{#each list.items.filter((i) => !i.archived) as item (item.id)}
+		<ul
+			class="items"
+			use:dragHandleZone={{ items: dndItems, flipDurationMs: 200, delayTouchStart: true }}
+			onconsider={handleConsider}
+			onfinalize={handleFinalize}
+		>
+			{#each dndItems as item (item.id)}
 				<li
 					class="card card-flat"
 					class:checked={item.checked}
 					class:flash={item.id in flashes}
 					style={item.id in flashes ? `--flash-color:${flashes[item.id]}` : ""}
+					animate:flip={{ duration: 200 }}
 				>
-					<button class="icon-circle check" onclick={() => toggle(item.id, item.checked)} aria-label="Toggle checked">
-						{item.checked ? "✓" : ""}
-					</button>
-					{#if editingItemId === item.id}
-						<input
-							class="input edit-input"
-							type="text"
-							bind:value={editingText}
-							onblur={commitEdit}
-							onkeydown={(e) => e.key === "Enter" && commitEdit()}
-						/>
-					{:else}
-						<div class="text-wrap">
-							<button class="text" onclick={() => startEdit(item.id, item.text)}>{item.text}</button>
-							<span class="added-by">added by {item.addedBy}</span>
-						</div>
+					<div class="item-row">
+						<span class="drag-handle" use:dragHandle aria-label="drag to reorder">⠿</span>
+						<button class="icon-circle check" onclick={() => toggle(item.id, item.checked)} aria-label="Toggle checked">
+							{item.checked ? "✓" : ""}
+						</button>
+						{#if editingItemId === item.id}
+							<input
+								class="input edit-input"
+								type="text"
+								bind:value={editingText}
+								onblur={commitEdit}
+								onkeydown={(e) => e.key === "Enter" && commitEdit()}
+							/>
+						{:else}
+							<div class="text-wrap">
+								<button class="text" onclick={() => startEdit(item.id, item.text)}>{item.text}</button>
+								<span class="added-by">added by {item.addedBy}</span>
+							</div>
+						{/if}
+						<button
+							class="note-toggle"
+							class:has-note={item.note.length > 0}
+							onclick={() => toggleNote(item.id)}
+							aria-label="Toggle shared note"
+						>
+							📝
+						</button>
+						<button class="remove" onclick={() => removeItem(item.id)} aria-label="Remove item">✕</button>
+					</div>
+					{#if expandedNoteId === item.id && expandedNoteText}
+						<!-- svelte-ignore a11y_autofocus -->
+						<textarea
+							class="note-editor"
+							use:bindYText={expandedNoteText}
+							placeholder="shared note -- everyone here sees you typing, live"
+							rows="2"
+							autofocus
+						></textarea>
 					{/if}
-					<button class="remove" onclick={() => removeItem(item.id)} aria-label="Remove item">✕</button>
 				</li>
 			{/each}
 		</ul>
 
-		{#if list.items.filter((i) => !i.archived).length === 0}
+		{#if dndItems.length === 0}
 			<p class="empty">nothing here yet.</p>
 		{/if}
 
@@ -265,9 +354,15 @@
 	}
 	.items li {
 		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.5rem;
+		padding: 0.7rem 0.85rem;
+	}
+	.item-row {
+		display: flex;
 		align-items: center;
 		gap: 0.75rem;
-		padding: 0.7rem 0.85rem;
 	}
 	.items li.flash {
 		animation: flash-pulse 1.5s ease-out;
@@ -279,6 +374,23 @@
 		100% {
 			box-shadow: 0 0 0 3px transparent;
 		}
+	}
+	.drag-handle {
+		flex-shrink: 0;
+		font-size: 1.2rem;
+		color: var(--text-secondary);
+		cursor: grab;
+		touch-action: none;
+		user-select: none;
+		line-height: 1;
+	}
+	.drag-handle:active {
+		cursor: grabbing;
+	}
+	:global(.items li[data-is-dnd-shadow-item-hint]) {
+		background: var(--bg-page);
+		border-style: dashed;
+		box-shadow: none;
 	}
 	.check {
 		font-weight: 800;
@@ -351,6 +463,31 @@
 	}
 	.remove:hover {
 		color: var(--color-primary);
+	}
+	.note-toggle {
+		flex-shrink: 0;
+		background: none;
+		border: none;
+		padding: 0.25rem;
+		cursor: pointer;
+		opacity: 0.35;
+		font-size: 0.95rem;
+		line-height: 1;
+	}
+	.note-toggle.has-note {
+		opacity: 1;
+	}
+	.note-editor {
+		width: 100%;
+		box-sizing: border-box;
+		resize: vertical;
+		font: inherit;
+		font-size: 0.85rem;
+		padding: 0.5rem 0.65rem;
+		border-radius: 10px;
+		border: var(--border);
+		background: var(--bg-page);
+		color: var(--text-primary);
 	}
 	.empty {
 		text-align: center;

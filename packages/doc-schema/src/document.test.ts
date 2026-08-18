@@ -14,6 +14,7 @@ import {
   createHouseholdDoc,
   createList,
   forkList,
+  getItemNoteText,
   mergeFork,
   readActivity,
   readHousehold,
@@ -598,5 +599,63 @@ describe("19. fork racing a concurrent edit to the source converges", () => {
       expect(fork.items.map((i) => i.text)).toEqual(["Milk"]);
     }
     expect(statesConverged(docA, docB)).toBe(true);
+  });
+});
+
+describe("20. item notes are real character-level collaborative text", () => {
+  test("two peers typing in the same note converge without overwriting each other", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    const docA = cloneDoc(base);
+    const docB = cloneDoc(base);
+
+    getItemNoteText(docA, listId, itemId).insert(0, "get the 2%");
+    getItemNoteText(docB, listId, itemId).insert(0, "Tuesday coupon");
+
+    syncDocs(docA, docB);
+
+    const noteA = readHousehold(docA).lists[0].items[0].note;
+    const noteB = readHousehold(docB).lists[0].items[0].note;
+    expect(noteA).toBe(noteB);
+    // This is the actual proof of the feature: a plain last-write-wins
+    // field would have one insert clobber the other. Both must survive.
+    expect(noteA).toContain("get the 2%");
+    expect(noteA).toContain("Tuesday coupon");
+    expect(statesConverged(docA, docB)).toBe(true);
+  });
+
+  test("forking copies the note as an independent snapshot, not a live link", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    getItemNoteText(base, listId, itemId).insert(0, "2% please");
+
+    const forkId = forkList(base, listId, "Dinner Party", "bob");
+
+    // Editing the source's note after the fork must never leak into it.
+    getItemNoteText(base, listId, itemId).insert(0, "URGENT: ");
+
+    const source = readHousehold(base).lists.find((l) => l.id === listId)!;
+    const fork = readHousehold(base).lists.find((l) => l.id === forkId)!;
+    expect(source.items[0].note).toBe("URGENT: 2% please");
+    expect(fork.items[0].note).toBe("2% please");
+  });
+
+  test("getItemNoteText backfills a note field for items created before this feature existed", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+
+    // Simulate a pre-migration item: raw doc surgery to remove the field
+    // addItem now always sets, mirroring real historical production data.
+    const listsMap = base.getMap("lists") as unknown as Y.Map<Y.Map<unknown>>;
+    const itemsMap = listsMap.get(listId)!.get("items") as Y.Map<Y.Map<unknown>>;
+    itemsMap.get(itemId)!.delete("note");
+
+    const note = getItemNoteText(base, listId, itemId);
+    expect(note.toString()).toBe("");
+    note.insert(0, "backfilled fine");
+    expect(readHousehold(base).lists[0].items[0].note).toBe("backfilled fine");
   });
 });

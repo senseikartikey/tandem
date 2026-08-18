@@ -69,6 +69,9 @@ importers:
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
+      svelte-dnd-action:
+        specifier: ^0.9.78
+        version: 0.9.78(svelte@5.56.9)
       uuid:
         specifier: ^11.0.0
         version: 11.1.1
@@ -78,6 +81,9 @@ importers:
       y-protocols:
         specifier: ^1.0.6
         version: 1.0.7(yjs@13.6.32)
+      y-textarea:
+        specifier: ^1.0.2
+        version: 1.0.2(yjs@13.6.32)
       y-webrtc:
         specifier: ^10.3.0
         version: 10.3.0(yjs@13.6.32)
@@ -1631,6 +1637,11 @@ packages:
       svelte: ^4.0.0 || ^5.0.0-next.0
       typescript: ^5.0.0 || ^6.0.0
 
+  svelte-dnd-action@0.9.78:
+    resolution: {integrity: sha512-qov+j3A9Umo1Ng2b2PaQ/nTDBo1sogAw19DF1KZ35Pcx/9yJtlmnKYKVHjCz9iqUH+g1sk4XuCstxPZFFPEa/Q==}
+    peerDependencies:
+      svelte: '>=3.23.0 || ^5.0.0-next.0'
+
   svelte@5.56.9:
     resolution: {integrity: sha512-VT8kSnlEg8069w7AiCcAk3Yf5xvMnrGTagVOmU/OpOLHaHnNqXhWZCH/4EVga/bT/HtWhvE6/fHrXLErx7OnJA==}
     engines: {node: '>=18'}
@@ -1912,6 +1923,11 @@ packages:
     engines: {node: '>=16.0.0', npm: '>=8.0.0'}
     peerDependencies:
       yjs: ^13.0.0
+
+  y-textarea@1.0.2:
+    resolution: {integrity: sha512-8A9uXZe+GjVZ4IgmLzBdhspsrVVesuyyzV6NAr6O//7OdtySV9Qt6yuGktS6gFNIgiUY7ZAwJZXTJ5lPps7M9w==}
+    peerDependencies:
+      yjs: ^13.5.27
 
   y-webrtc@10.3.0:
     resolution: {integrity: sha512-KalJr7dCgUgyVFxoG3CQYbpS0O2qybegD0vI4bYnYHI0MOwoVbucED3RZ5f2o1a5HZb1qEssUKS0H/Upc6p1lA==}
@@ -3224,6 +3240,10 @@ snapshots:
     transitivePeerDependencies:
       - picomatch
 
+  svelte-dnd-action@0.9.78(svelte@5.56.9):
+    dependencies:
+      svelte: 5.56.9
+
   svelte@5.56.9:
     dependencies:
       '@jridgewell/remapping': 2.3.5
@@ -3455,6 +3475,10 @@ snapshots:
   y-protocols@1.0.7(yjs@13.6.32):
     dependencies:
       lib0: 0.2.117
+      yjs: 13.6.32
+
+  y-textarea@1.0.2(yjs@13.6.32):
+    dependencies:
       yjs: 13.6.32
 
   y-webrtc@10.3.0(yjs@13.6.32):
