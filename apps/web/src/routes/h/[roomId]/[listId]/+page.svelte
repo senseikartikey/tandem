@@ -75,7 +75,7 @@
 	}
 </script>
 
-<main>
+<main class="app-shell">
 	<a href={`/h/${roomId}`} class="back">&larr; {household?.name ?? "household"}</a>
 
 	{#if list}

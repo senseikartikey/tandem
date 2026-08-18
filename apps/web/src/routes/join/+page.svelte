@@ -57,7 +57,7 @@
 	}
 </script>
 
-<main>
+<main class="app-shell">
 	{#if status === "resolving"}
 		<p>joining household…</p>
 	{:else if status === "naming"}

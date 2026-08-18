@@ -106,7 +106,7 @@
 	}
 </script>
 
-<main>
+<main class="app-shell">
 	<a href="/" class="back">&larr; households</a>
 
 	{#if household}

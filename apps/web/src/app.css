@@ -54,14 +54,22 @@ body {
 	font-family: var(--font);
 	touch-action: manipulation;
 	-webkit-tap-highlight-color: transparent;
+	scroll-behavior: smooth;
 }
 
 body {
-	max-width: 560px;
-	margin-inline: auto;
 	min-height: 100dvh;
 	padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
 		env(safe-area-inset-left);
+}
+
+/* The app views (household/list/join) are a phone-card experience even on
+   desktop -- deliberately narrow. The landing page (/) is the one route
+   that isn't, so it opts out by simply not using this class rather than
+   the whole site being capped at body level. */
+.app-shell {
+	max-width: 560px;
+	margin-inline: auto;
 }
 
 h1,
