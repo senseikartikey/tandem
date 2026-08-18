@@ -6,10 +6,12 @@
 	import { rememberHousehold } from "$lib/local-households";
 	import { createHouseholdSession, type HouseholdSession } from "$lib/sync/household-session";
 	import { cacheSession, getOrJoinSession } from "$lib/sync/session-cache";
+	import type { PresenceEntry } from "$lib/sync/presence-store";
 	import type { ActivitySnapshot, HouseholdSnapshot } from "@tandem/doc-schema";
 	import { onDestroy, onMount } from "svelte";
 	import type { PageProps } from "./$types";
 	import YourName from "$lib/components/YourName.svelte";
+	import PresenceAvatars from "$lib/components/PresenceAvatars.svelte";
 
 	// $app/state's `page.params` is typed broadly across every route (so
 	// individual keys come back as `string | undefined`); this route's
@@ -19,6 +21,7 @@
 	let session = $state<HouseholdSession | null>(null);
 	let household = $state<HouseholdSnapshot | null>(null);
 	let activity = $state<ActivitySnapshot[]>([]);
+	let presence = $state<PresenceEntry[]>([]);
 	let newListName = $state("");
 	let showInvite = $state(false);
 	let showRemovedLists = $state(false);
@@ -28,6 +31,7 @@
 	let inviteError = $state("");
 
 	let unsubscribe: (() => void) | null = null;
+	let unsubscribePresence: (() => void) | null = null;
 
 	onMount(async () => {
 		const newName = page.url.searchParams.get("new");
@@ -44,6 +48,9 @@
 			activity = entries;
 			if (snapshot.name) rememberHousehold(roomId, snapshot.name);
 		});
+		unsubscribePresence = session.presence.subscribe((entries) => {
+			presence = entries;
+		});
 	});
 
 	// Intentionally does NOT destroy the session -- it's cached and shared
@@ -52,6 +59,7 @@
 	// one page. Only the local subscription needs cleaning up here.
 	onDestroy(() => {
 		unsubscribe?.();
+		unsubscribePresence?.();
 	});
 
 	function addList(): void {
@@ -111,6 +119,8 @@
 
 	{#if household}
 		<h1>{household.name}</h1>
+
+		<PresenceAvatars entries={presence} />
 
 		<YourName />
 

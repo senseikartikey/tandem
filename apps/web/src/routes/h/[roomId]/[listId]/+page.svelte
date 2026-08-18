@@ -1,10 +1,12 @@
 <script lang="ts">
 	import type { HouseholdSession } from "$lib/sync/household-session";
 	import { getOrJoinSession } from "$lib/sync/session-cache";
+	import type { PresenceEntry } from "$lib/sync/presence-store";
 	import type { ActivitySnapshot, HouseholdSnapshot, ListSnapshot } from "@tandem/doc-schema";
 	import { onDestroy, onMount } from "svelte";
 	import type { PageProps } from "./$types";
 	import ActivityPanel from "./ActivityPanel.svelte";
+	import PresenceAvatars from "$lib/components/PresenceAvatars.svelte";
 
 	// See h/[roomId]/+page.svelte's comment on why the typed PageProps params
 	// are used here instead of $app/state's broadly-typed page.params.
@@ -15,16 +17,41 @@
 	let session = $state<HouseholdSession | null>(null);
 	let household = $state<HouseholdSnapshot | null>(null);
 	let activity = $state<ActivitySnapshot[]>([]);
+	let presence = $state<PresenceEntry[]>([]);
 	let newItemText = $state("");
 	let editingItemId = $state<string | null>(null);
 	let editingText = $state("");
 	let showActivity = $state(false);
 
 	let unsubscribe: (() => void) | null = null;
+	let unsubscribePresence: (() => void) | null = null;
 
 	let list = $derived<ListSnapshot | null>(
 		household?.lists.find((l) => l.id === listId) ?? null,
 	);
+
+	// itemId -> presence color, briefly set when a *remote* peer's Awareness
+	// "lastTouch" signal names this item, so you see someone else's change
+	// land while you're both looking at the same list -- the exact moment
+	// that prevents the "wait, did you already grab that?" duplicate-buy
+	// scenario this feature exists for.
+	let flashes = $state<Record<string, string>>({});
+	const lastSeenTouch = new Map<number, number>(); // clientId -> ts already flashed
+
+	$effect(() => {
+		for (const entry of presence) {
+			if (!entry.lastTouch) continue;
+			const { itemId, ts } = entry.lastTouch;
+			if (lastSeenTouch.get(entry.clientId) === ts) continue; // already flashed
+			lastSeenTouch.set(entry.clientId, ts);
+			if (Date.now() - ts > 5000) continue; // stale signal from a peer who joined late
+			flashes = { ...flashes, [itemId]: entry.color };
+			setTimeout(() => {
+				const { [itemId]: _removed, ...rest } = flashes;
+				flashes = rest;
+			}, 1500);
+		}
+	});
 
 	onMount(async () => {
 		// Reuses the cached session from the parent /h/[roomId] page if this
@@ -35,12 +62,16 @@
 			household = snapshot;
 			activity = entries;
 		});
+		unsubscribePresence = session.presence.subscribe((entries) => {
+			presence = entries;
+		});
 	});
 
 	// See the household page's onDestroy comment -- the session is cached
 	// and shared, not owned by this route.
 	onDestroy(() => {
 		unsubscribe?.();
+		unsubscribePresence?.();
 	});
 
 	function addItem(): void {
@@ -81,6 +112,8 @@
 	{#if list}
 		<h1>{list.name}</h1>
 
+		<PresenceAvatars entries={presence} />
+
 		<form
 			class="add-item"
 			onsubmit={(e) => {
@@ -94,7 +127,12 @@
 
 		<ul class="items">
 			{#each list.items.filter((i) => !i.archived) as item (item.id)}
-				<li class="card card-flat" class:checked={item.checked}>
+				<li
+					class="card card-flat"
+					class:checked={item.checked}
+					class:flash={item.id in flashes}
+					style={item.id in flashes ? `--flash-color:${flashes[item.id]}` : ""}
+				>
 					<button class="icon-circle check" onclick={() => toggle(item.id, item.checked)} aria-label="Toggle checked">
 						{item.checked ? "✓" : ""}
 					</button>
@@ -175,6 +213,17 @@
 		align-items: center;
 		gap: 0.75rem;
 		padding: 0.7rem 0.85rem;
+	}
+	.items li.flash {
+		animation: flash-pulse 1.5s ease-out;
+	}
+	@keyframes flash-pulse {
+		0% {
+			box-shadow: 0 0 0 3px var(--flash-color);
+		}
+		100% {
+			box-shadow: 0 0 0 3px transparent;
+		}
 	}
 	.check {
 		font-weight: 800;
