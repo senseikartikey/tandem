@@ -161,13 +161,7 @@
 				<div class="feature-card feature-lead card">
 					<span class="feature-icon">🍴</span>
 					<h3>fork a list</h3>
-					<p>
-						Draft a version without touching the real list — reorganize it, plan a
-						different menu, try anything. Merge the new items back when you're happy
-						with it, or throw the whole thing away. Either way, the shared list was
-						never at risk. No other shared-list app can do this — it's only possible
-						because of how the sync itself works.
-					</p>
+					<p>Draft a version without touching the real list. Merge it back when you're happy, or throw it away — either way, nothing was ever at risk.</p>
 				</div>
 				<div class="feature-card card">
 					<span class="feature-icon">📶</span>
