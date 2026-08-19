@@ -12,6 +12,7 @@
 	import ActivityPanel from "./ActivityPanel.svelte";
 	import PresenceAvatars from "$lib/components/PresenceAvatars.svelte";
 	import { bindYText } from "$lib/actions/bind-y-text";
+	import { lookupProductByBarcode } from "$lib/product-lookup";
 
 	// See h/[roomId]/+page.svelte's comment on why the typed PageProps params
 	// are used here instead of $app/state's broadly-typed page.params.
@@ -32,6 +33,9 @@
 	let activity = $state<ActivitySnapshot[]>([]);
 	let presence = $state<PresenceEntry[]>([]);
 	let newItemText = $state("");
+	let showScanner = $state(false);
+	let scanLookupPending = $state(false);
+	let scanLookupMissed = $state(false);
 	let editingItemId = $state<string | null>(null);
 	let editingText = $state("");
 	let showActivity = $state(false);
@@ -164,6 +168,26 @@
 		newItemText = "";
 	}
 
+	// A scan never adds the item directly -- it only fills the same input the
+	// manual-entry flow uses, so a misread barcode or a wrong product-name
+	// match is just as easy to fix/cancel as a typo, and there's exactly one
+	// codepath that actually writes an item. On a lookup miss (no match, or
+	// offline) the raw barcode digits are deliberately NOT used as the item
+	// text -- "0034000138516" isn't a useful list entry -- the person is
+	// asked to type the name themselves instead.
+	async function handleBarcode(code: string): Promise<void> {
+		showScanner = false;
+		scanLookupPending = true;
+		scanLookupMissed = false;
+		const name = await lookupProductByBarcode(code);
+		scanLookupPending = false;
+		if (name) {
+			newItemText = name;
+		} else {
+			scanLookupMissed = true;
+		}
+	}
+
 	function toggle(itemId: string, checked: boolean): void {
 		session?.setItemChecked(listId, itemId, !checked);
 	}
@@ -237,9 +261,39 @@
 				addItem();
 			}}
 		>
-			<input class="input" type="text" placeholder="add an item" bind:value={newItemText} autocomplete="off" />
+			<input
+				class="input"
+				type="text"
+				placeholder={scanLookupPending ? "looking up product…" : "add an item"}
+				bind:value={newItemText}
+				oninput={() => (scanLookupMissed = false)}
+				autocomplete="off"
+			/>
+			<button
+				class="btn btn-ghost scan-btn"
+				type="button"
+				onclick={() => (showScanner = true)}
+				aria-label="Scan a barcode"
+				title="scan a barcode"
+			>
+				📷
+			</button>
 			<button class="btn" type="submit" disabled={!newItemText.trim()}>add</button>
 		</form>
+		{#if scanLookupMissed}
+			<p class="scan-missed">no product match for that barcode — type the name.</p>
+		{/if}
+
+		{#if showScanner}
+			<!-- Dynamically imported: @zxing/library is a ~145kB-gzipped barcode
+			     decoding engine, and most visits to this page never scan
+			     anything. Loading it eagerly would tax every list-open for a
+			     feature only some visits use -- exactly the kind of cost this
+			     app's whole "fast, offline-first" pitch means avoiding. -->
+			{#await import("$lib/components/BarcodeScanner.svelte") then { default: BarcodeScanner }}
+				<BarcodeScanner onDetected={handleBarcode} onClose={() => (showScanner = false)} />
+			{/await}
+		{/if}
 
 		<ul
 			class="items"
@@ -343,6 +397,16 @@
 	}
 	.add-item .input {
 		flex: 1;
+	}
+	.scan-btn {
+		flex-shrink: 0;
+		padding: 12px;
+		font-size: 1.1rem;
+	}
+	.scan-missed {
+		margin: -0.75rem 0 1.25rem;
+		font-size: 0.8rem;
+		color: var(--color-primary);
 	}
 	.items {
 		list-style: none;
