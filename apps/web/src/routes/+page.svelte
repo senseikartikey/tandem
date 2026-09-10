@@ -252,8 +252,8 @@
 		{
 			emoji: "🎙️",
 			label: "talk it in",
-			body: "say “milk, eggs and sourdough” and it becomes three items. the speech model runs inside your browser — the audio never leaves your device.",
-			tag: "offline speech, no cloud",
+			body: "say “milk, eggs and sourdough” and it becomes three items, transcribed as you speak. tandem never hears the audio — it uses your device's own dictation, or a local model offline.",
+			tag: "words in, items out",
 			tone: "teal",
 		},
 		{

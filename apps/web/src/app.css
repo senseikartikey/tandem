@@ -73,6 +73,13 @@ body {
 	scroll-behavior: smooth;
 }
 
+/* Set by +layout.svelte per route -- see the comment there for why the
+   document background has to move rather than just the page's own. */
+html[data-surface="poster"],
+html[data-surface="poster"] body {
+	background: var(--bg-poster);
+}
+
 body {
 	min-height: 100dvh;
 	padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)

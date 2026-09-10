@@ -1,16 +1,15 @@
-// Speech-to-text that runs entirely inside the browser tab.
+// Whisper, running entirely inside the browser tab.
 //
-// This is the one place in the app where a "cloud AI" would have been the
-// easy path, and taking it would have quietly broken the product's whole
-// premise: the Web Speech API streams your microphone to a vendor's servers
-// and returns nothing at all offline. Whisper running locally keeps the
-// promise the landing page makes -- the audio never leaves the device, and
-// once the weights are cached the feature works in a basement with no bars,
-// exactly like every other feature here.
+// This is the *fallback* engine, not the primary one. The browser's own
+// recognizer (speech.ts) is instant and needs no download, so it is what
+// people actually get; this exists for browsers that have none, and for the
+// offline case the rest of the app is built around -- once the weights are
+// cached it transcribes in a basement with no bars.
 //
-// The cost of that choice is honest and up-front: a one-time model download.
-// Callers are expected to surface the progress this module reports rather
-// than hide it behind a spinner.
+// Because it is a fallback, it is warmed in the background (preload) rather
+// than fetched when someone taps the microphone. Making a person wait on a
+// multi-megabyte download at the moment they want to speak is the wrong
+// shape for this feature, and no amount of progress reporting fixes that.
 
 export interface ModelLoadProgress {
 	/** "initiate" | "download" | "progress" | "done" | "ready", per transformers.js. */
@@ -56,18 +55,25 @@ export function loadedTranscriber(): LoadedTranscriber | null {
 	return loaded;
 }
 
-// `"gpu" in navigator` is not enough. Android Chrome exposes navigator.gpu on
-// hardware where requestAdapter() then resolves to null, and some devices
-// hand back an adapter that only fails later during model init -- which is
-// exactly the "couldn't start the speech model" dead end this used to hit on
-// phones while working fine on desktop.
-async function hasUsableWebGpu(): Promise<boolean> {
+// Choosing a backend is mostly a matter of knowing where WebGPU is a trap.
+//
+// `"gpu" in navigator` is not enough on its own: Android Chrome exposes
+// navigator.gpu on hardware whose requestAdapter() resolves to null. Safari
+// is worse -- it ships WebGPU, hands back a real adapter, and then the ONNX
+// runtime dies inside session creation with "webgpuInit is not a function",
+// because the wasm binary it loaded has no WebGPU support compiled in. That
+// failure surfaces as "no available backend found", which is what this hit
+// on iPhone while desktop worked. So Safari goes straight to WASM.
+async function pickDevice(): Promise<"webgpu" | "wasm"> {
 	const gpu = (navigator as { gpu?: { requestAdapter(): Promise<unknown | null> } }).gpu;
-	if (!gpu) return false;
+	if (!gpu) return "wasm";
+	const ua = navigator.userAgent;
+	const isSafari = /safari/i.test(ua) && !/chrome|chromium|crios|android|fxios|edg/i.test(ua);
+	if (isSafari) return "wasm";
 	try {
-		return (await gpu.requestAdapter()) !== null;
+		return (await gpu.requestAdapter()) ? "webgpu" : "wasm";
 	} catch {
-		return false;
+		return "wasm";
 	}
 }
 
@@ -104,7 +110,7 @@ export async function loadTranscriber(
 ): Promise<LoadedTranscriber> {
 	if (!pipelinePromise) {
 		pipelinePromise = (async () => {
-			if (await hasUsableWebGpu()) {
+			if ((await pickDevice()) === "webgpu") {
 				try {
 					return await build("webgpu", onProgress);
 				} catch (error) {
@@ -123,6 +129,30 @@ export async function loadTranscriber(
 			});
 	}
 	return pipelinePromise;
+}
+
+/**
+ * Starts fetching the model in the background, if the connection looks like
+ * one where a several-megabyte download is a reasonable thing to do
+ * unannounced. Fire-and-forget: failures are swallowed, because nothing is
+ * waiting on this and the real attempt reports its own errors.
+ */
+export function preloadTranscriber(): void {
+	if (typeof window === "undefined" || loaded || pipelinePromise) return;
+	const connection = (
+		navigator as {
+			connection?: { saveData?: boolean; effectiveType?: string };
+		}
+	).connection;
+	if (connection?.saveData) return;
+	if (connection?.effectiveType && /(^|-)2g$/.test(connection.effectiveType)) return;
+
+	const start = () => void loadTranscriber().catch(() => {});
+	if ("requestIdleCallback" in window) {
+		window.requestIdleCallback(start, { timeout: 8000 });
+	} else {
+		setTimeout(start, 3000);
+	}
 }
 
 /** Transcribes 16kHz mono audio. Returns "" when Whisper heard nothing usable. */

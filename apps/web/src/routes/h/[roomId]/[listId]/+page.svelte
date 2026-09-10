@@ -16,6 +16,8 @@
 	import { bindYText } from "$lib/actions/bind-y-text";
 	import { lookupProductByBarcode } from "$lib/product-lookup";
 	import { supportsVoiceCapture } from "$lib/voice/recorder.js";
+	import { browserSpeechAvailable } from "$lib/voice/speech.js";
+	import { preloadTranscriber } from "$lib/voice/transcriber.js";
 
 	// See h/[roomId]/+page.svelte's comment on why the typed PageProps params
 	// are used here instead of $app/state's broadly-typed page.params.
@@ -145,6 +147,15 @@
 		const afterId = index < dndItems.length - 1 ? dndItems[index + 1].id : null;
 		session.reorderItem(listId, draggedId, beforeId, afterId);
 	}
+
+	onMount(() => {
+		// Only browsers with no dictation of their own will ever reach the
+		// local model, and only those pay for it: warmed here, in the
+		// background, so the microphone is usable the instant it's tapped
+		// instead of starting a multi-megabyte download under someone who is
+		// already talking.
+		if (!browserSpeechAvailable() && supportsVoiceCapture()) preloadTranscriber();
+	});
 
 	onMount(async () => {
 		// Reuses the cached session from the parent /h/[roomId] page if this
@@ -291,7 +302,7 @@
 				oninput={() => (scanLookupMissed = false)}
 				autocomplete="off"
 			/>
-			{#if supportsVoiceCapture()}
+			{#if browserSpeechAvailable() || supportsVoiceCapture()}
 				<button
 					class="btn btn-ghost scan-btn"
 					type="button"
