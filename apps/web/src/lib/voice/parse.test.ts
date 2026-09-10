@@ -1,6 +1,6 @@
-// The transcription step can't be tested without a model and a microphone;
-// this step can, so everything that decides what actually lands in someone's
-// list is kept here, in pure functions, and covered.
+// The recognition step can't be tested without a microphone; this step can,
+// so everything that decides what actually lands in someone's list is kept
+// here, in pure functions, and covered.
 
 import { describe, expect, test } from "vitest";
 import { parseSpokenItems } from "./parse.js";
@@ -31,37 +31,81 @@ describe("splitting", () => {
 	});
 });
 
-describe("filler stripping", () => {
-	test("strips a 'we need' opener", () => {
+describe("preamble", () => {
+	// The case that shipped broken: a greeting in front of the request left
+	// the whole sentence in the item.
+	test("drops a greeting before the request", () => {
+		expect(parseSpokenItems("Hello I need milk and sourdough bread")).toEqual([
+			"milk",
+			"sourdough bread",
+		]);
+	});
+
+	test("drops a plain 'we need' opener", () => {
 		expect(parseSpokenItems("we need coffee")).toEqual(["coffee"]);
 	});
 
-	test("strips a 'we're out of' opener", () => {
-		expect(parseSpokenItems("we're out of washing up liquid")).toEqual(["washing up liquid"]);
+	test("drops stacked openers", () => {
+		expect(parseSpokenItems("okay so can you grab some tomatoes")).toEqual(["tomatoes"]);
 	});
 
-	test("strips 'we've run out of'", () => {
-		expect(parseSpokenItems("we've run out of bin bags")).toEqual(["bin bags"]);
+	test("handles 'need to get'", () => {
+		expect(parseSpokenItems("I need to get washing up liquid")).toEqual(["washing up liquid"]);
 	});
 
-	test("strips stacked openers", () => {
-		expect(parseSpokenItems("okay so can you grab some tomatoes")).toEqual(["some tomatoes"]);
+	test("handles running out", () => {
+		expect(parseSpokenItems("we're out of bin bags")).toEqual(["bin bags"]);
+		expect(parseSpokenItems("we've ran out of kitchen roll")).toEqual(["kitchen roll"]);
+		expect(parseSpokenItems("we're running low on dishwasher tablets")).toEqual([
+			"dishwasher tablets",
+		]);
 	});
 
+	test("handles 'pick up' and 'don't forget'", () => {
+		expect(parseSpokenItems("pick up the dry cleaning")).toEqual(["dry cleaning"]);
+		expect(parseSpokenItems("don't forget birthday candles")).toEqual(["birthday candles"]);
+	});
+
+	test("a trigger word inside the item itself is left alone", () => {
+		// Nothing precedes "get" here except the item's own words, so the
+		// clause is not a request-with-preamble and must survive intact.
+		expect(parseSpokenItems("a card to get well soon")).toEqual(["a card to get well soon"]);
+	});
+
+	test("an item that merely contains a preamble word is untouched", () => {
+		expect(parseSpokenItems("hey presto pizza base")).toEqual(["hey presto pizza base"]);
+	});
+});
+
+describe("trailing filler", () => {
 	test("strips a trailing please", () => {
 		expect(parseSpokenItems("sourdough please")).toEqual(["sourdough"]);
 	});
 
-	test("strips a 'don't forget' opener", () => {
-		expect(parseSpokenItems("don't forget birthday candles")).toEqual(["birthday candles"]);
+	test("strips 'on the list'", () => {
+		expect(parseSpokenItems("put milk on the list")).toEqual(["milk"]);
+	});
+
+	test("strips 'as well' and 'too'", () => {
+		expect(parseSpokenItems("olives as well, capers too")).toEqual(["olives", "capers"]);
 	});
 
 	test("drops clauses that are only filler", () => {
 		expect(parseSpokenItems("milk, eggs, that's it")).toEqual(["milk", "eggs"]);
 	});
 
+	test("a greeting stranded in its own clause is dropped", () => {
+		expect(parseSpokenItems("morning, don't forget the school forms")).toEqual([
+			"school forms",
+		]);
+	});
+
 	test("drops clauses with no letters left", () => {
 		expect(parseSpokenItems("milk, ...,")).toEqual(["milk"]);
+	});
+
+	test("drops a request that named nothing", () => {
+		expect(parseSpokenItems("hello I need")).toEqual([]);
 	});
 });
 
