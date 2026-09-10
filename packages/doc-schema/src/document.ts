@@ -16,6 +16,12 @@ const META_KEY = "meta";
 const LISTS_KEY = "lists";
 const ITEMS_KEY = "items";
 const ACTIVITY_KEY = "activity";
+const NOTES_KEY = "notes";
+
+// A note index shows a title and the first line or two, never the whole
+// body -- see readNote for why the full text deliberately isn't in the
+// snapshot.
+const NOTE_PREVIEW_LENGTH = 160;
 
 export interface ListSnapshot {
   id: string;
@@ -59,11 +65,39 @@ export interface ItemSnapshot {
   updatedAt: number;
 }
 
+// A free-text note shared by the whole household -- the "stick it on the
+// fridge" surface that a list can't hold (a recipe, the wifi password, what
+// the plumber said). Notes sit beside lists in the same document rather
+// than in per-note subdocuments: a household's notes are small, and one
+// document means one persistence path, one sync connection and one presence
+// channel for the entire household instead of one per note opened.
+export interface NoteSnapshot {
+  id: string;
+  // Plain last-write-wins, unlike the body. A title is a label someone sets
+  // deliberately and rarely, so the cost of character-level merge machinery
+  // buys nothing here; two people renaming the same note in the same second
+  // is a race worth losing.
+  title: string;
+  // First NOTE_PREVIEW_LENGTH characters of the body, whitespace-collapsed,
+  // for rendering an index. Read-only, like ItemSnapshot.note -- editing
+  // goes through getNoteBodyText()'s live Y.Text handle.
+  preview: string;
+  order: string;
+  archived: boolean;
+  deletedAt: number | null;
+  createdBy: string;
+  createdAt: number;
+  // Bumped by touchNote(), not by body keystrokes -- see touchNote.
+  updatedAt: number;
+  lastEditedBy: string;
+}
+
 export interface HouseholdSnapshot {
   id: string;
   name: string;
   createdAt: number;
   lists: ListSnapshot[];
+  notes: NoteSnapshot[];
 }
 
 export type ActivityType =
@@ -116,6 +150,7 @@ export function initializeHouseholdMeta(doc: Y.Doc, name: string): void {
   });
   doc.getMap(LISTS_KEY);
   doc.getMap(ACTIVITY_KEY);
+  doc.getMap(NOTES_KEY);
 }
 
 function getListsMap(doc: Y.Doc): Y.Map<YRecord> {
@@ -136,6 +171,16 @@ function getItemRecord(doc: Y.Doc, listId: string, itemId: string): YRecord {
   const item = getItemsMap(doc, listId).get(itemId);
   if (!item) throw new Error(`Item ${itemId} not found in list ${listId}`);
   return item;
+}
+
+function getNotesMap(doc: Y.Doc): Y.Map<YRecord> {
+  return doc.getMap(NOTES_KEY) as Y.Map<YRecord>;
+}
+
+function getNoteRecord(doc: Y.Doc, noteId: string): YRecord {
+  const note = getNotesMap(doc).get(noteId);
+  if (!note) throw new Error(`Note ${noteId} not found`);
+  return note;
 }
 
 function getActivityMap(doc: Y.Doc): Y.Map<YRecord> {
@@ -570,6 +615,113 @@ export function reorderItem(
   });
 }
 
+// --- Notes ---
+
+// Notes are deliberately absent from the activity log, unlike every list and
+// item mutation above. The log's vocabulary is discrete events with a
+// before/after text ("renamed X to Y"), and the interesting thing that
+// happens to a note is continuous typing, which would either flood the feed
+// with one entry per keystroke or need a debounce policy the document layer
+// has no business owning. Each note instead carries its own updatedAt /
+// lastEditedBy, which is what a notes index actually renders.
+
+export function createNote(doc: Y.Doc, title: string, createdBy: string): string {
+  const id = uuidv4();
+  const notesMap = getNotesMap(doc);
+  doc.transact(() => {
+    const note: Y.Map<unknown> = new Y.Map();
+    const now = Date.now();
+    note.set("id", id);
+    note.set("title", title);
+    note.set("body", new Y.Text());
+    note.set("order", nextOrderKey(notesMap));
+    note.set("archived", false);
+    note.set("deletedAt", null);
+    note.set("createdBy", createdBy);
+    note.set("createdAt", now);
+    note.set("updatedAt", now);
+    note.set("lastEditedBy", createdBy);
+    notesMap.set(id, note);
+  });
+  return id;
+}
+
+export function renameNote(doc: Y.Doc, noteId: string, title: string, actorLabel: string): void {
+  const note = getNoteRecord(doc, noteId);
+  doc.transact(() => {
+    note.set("title", title);
+    note.set("updatedAt", Date.now());
+    note.set("lastEditedBy", actorLabel);
+  });
+}
+
+// Soft delete, for exactly the reasons archiveList documents: a structural
+// removal racing a concurrent edit to the same subtree is the CRDT edge case
+// worth designing away, and someone typing into a note while another device
+// deletes it is a plausible thing to happen in one household.
+export function archiveNote(doc: Y.Doc, noteId: string, actorLabel: string): void {
+  const note = getNoteRecord(doc, noteId);
+  doc.transact(() => {
+    note.set("archived", true);
+    note.set("deletedAt", Date.now());
+    note.set("lastEditedBy", actorLabel);
+  });
+}
+
+export function unarchiveNote(doc: Y.Doc, noteId: string, actorLabel: string): void {
+  const note = getNoteRecord(doc, noteId);
+  doc.transact(() => {
+    note.set("archived", false);
+    note.set("deletedAt", null);
+    note.set("lastEditedBy", actorLabel);
+  });
+}
+
+// Records that someone edited the body, since Y.Text ops don't touch the
+// parent map and therefore can't maintain "last edited by, when" themselves.
+// Deliberately a separate call the caller throttles rather than something
+// wired into every keystroke: this is a last-write-wins field on the shared
+// map, so writing it per character would add a CRDT op per keystroke on top
+// of the text ops that carry the actual content, and make any
+// recently-edited ordering thrash while someone is mid-sentence. The same
+// reasoning getItemNoteText documents for staying out of the activity log.
+export function touchNote(doc: Y.Doc, noteId: string, actorLabel: string): void {
+  const note = getNoteRecord(doc, noteId);
+  doc.transact(() => {
+    note.set("updatedAt", Date.now());
+    note.set("lastEditedBy", actorLabel);
+  });
+}
+
+// The note's live, shared Y.Text, for binding an editor straight to it --
+// same contract (and same lazy-backfill safety) as getItemNoteText. This is
+// the entire point of the feature: two people typing into one note at once
+// must merge character by character, which only the real CRDT type can do.
+export function getNoteBodyText(doc: Y.Doc, noteId: string): Y.Text {
+  const note = getNoteRecord(doc, noteId);
+  const existing = note.get("body");
+  if (existing instanceof Y.Text) return existing;
+  doc.transact(() => {
+    if (!(note.get("body") instanceof Y.Text)) note.set("body", new Y.Text());
+  });
+  return note.get("body") as Y.Text;
+}
+
+export function reorderNote(
+  doc: Y.Doc,
+  noteId: string,
+  beforeNoteId: string | null,
+  afterNoteId: string | null,
+): void {
+  const notesMap = getNotesMap(doc);
+  const note = getNoteRecord(doc, noteId);
+  const before = orderKeyOf(notesMap, beforeNoteId);
+  const after = orderKeyOf(notesMap, afterNoteId);
+  doc.transact(() => {
+    note.set("order", generateKeyBetween(before, after));
+  });
+}
+
 // --- Reads ---
 
 function readItem(record: YRecord): ItemSnapshot {
@@ -606,6 +758,27 @@ function readList(record: YRecord): ListSnapshot {
   };
 }
 
+// Only a preview of the body, never the whole thing: readHousehold runs on
+// every document update, so returning full note text would re-stringify
+// every note in the household on every keystroke anyone types anywhere. An
+// editor never needs it from here -- it binds the live Y.Text instead.
+function readNote(record: YRecord): NoteSnapshot {
+  const body = record.get("body");
+  const text = body instanceof Y.Text ? body.toString() : "";
+  return {
+    id: record.get("id") as string,
+    title: record.get("title") as string,
+    preview: text.replace(/\s+/g, " ").trim().slice(0, NOTE_PREVIEW_LENGTH),
+    order: record.get("order") as string,
+    archived: record.get("archived") as boolean,
+    deletedAt: (record.get("deletedAt") as number | null) ?? null,
+    createdBy: record.get("createdBy") as string,
+    createdAt: record.get("createdAt") as number,
+    updatedAt: record.get("updatedAt") as number,
+    lastEditedBy: record.get("lastEditedBy") as string,
+  };
+}
+
 function readActivityRecord(record: YRecord): ActivitySnapshot {
   return {
     id: record.get("id") as string,
@@ -628,6 +801,7 @@ export function readHousehold(doc: Y.Doc): HouseholdSnapshot {
     name: meta.get("name") as string,
     createdAt: meta.get("createdAt") as number,
     lists: sortedByOrder(listsMap).map(readList),
+    notes: sortedByOrder(getNotesMap(doc)).map(readNote),
   };
 }
 

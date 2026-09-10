@@ -4,3 +4,12 @@ packages:
 allowBuilds:
   esbuild: true
   leveldown: false
+  # Pulled in by @huggingface/transformers, and all three are Node-only
+  # native builds this app never reaches: the speech model runs in the
+  # browser through onnxruntime-web, not the Node binding, and nothing here
+  # does server-side image processing. Skipping their install scripts keeps
+  # CI installs fast and avoids native toolchain failures on hosts that
+  # have no compiler.
+  onnxruntime-node: false
+  protobufjs: false
+  sharp: false

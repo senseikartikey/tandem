@@ -103,94 +103,248 @@
 		}, 1400);
 		return () => clearInterval(interval);
 	});
+
+	// Rendered twice inside one marquee track so the -50% translate loops
+	// seamlessly (see .marquee-track in app.css).
+	const marqueePhrases = [
+		"offline first",
+		"no accounts",
+		"fork a list",
+		"merge it back",
+		"crdt synced",
+		"scan a barcode",
+		"zero bars, zero problem",
+	];
+
+	const steps = [
+		{
+			num: "01",
+			emoji: "🏠",
+			title: "make a household",
+			body: "name it, and it exists. no email, no password, no verification mail that never arrives.",
+		},
+		{
+			num: "02",
+			emoji: "📲",
+			title: "share the code",
+			body: "a QR code or six characters. whoever scans it is in, on any device.",
+		},
+		{
+			num: "03",
+			emoji: "🛒",
+			title: "add stuff anywhere",
+			body: "aisle five with no bars? your device is the source of truth. it syncs when it can.",
+		},
+		{
+			num: "04",
+			emoji: "🍴",
+			title: "fork before you wreck it",
+			body: "draft a version of the list, merge it back, or bin it. nothing was ever at risk.",
+		},
+	];
+
+	const features = [
+		{
+			emoji: "🍴",
+			label: "fork a list",
+			body: "draft a version without touching the real list. merge it back when you're happy, or throw it away.",
+			tag: "zero risk",
+			tone: "yellow",
+		},
+		{
+			emoji: "📶",
+			label: "no signal? fine",
+			body: "your device is the source of truth. most list apps break offline — this one doesn't.",
+			tag: "local-first",
+			tone: "teal",
+		},
+		{
+			emoji: "🟢",
+			label: "shop together",
+			body: "see who else has the list open right now, and watch their check-offs flash in as they happen.",
+			tag: "live presence",
+			tone: "coral",
+		},
+		{
+			emoji: "🏷️",
+			label: "who did what",
+			body: "every add, edit, and check-off is attributed to a real person, not a guess.",
+			tag: "full history",
+			tone: "lavender",
+		},
+		{
+			emoji: "↩️",
+			label: "undo anything",
+			body: "removed something by mistake? one tap brings it back — items or whole lists.",
+			tag: "nothing is deleted",
+			tone: "pink",
+		},
+		{
+			emoji: "📷",
+			label: "scan a barcode",
+			body: "point the camera at the box in your hand and the product name fills itself in.",
+			tag: "camera in, name out",
+			tone: "paper",
+		},
+		{
+			emoji: "🎙️",
+			label: "talk it in",
+			body: "say “milk, eggs and sourdough” and it becomes three items. the speech model runs inside your browser — the audio never leaves your device.",
+			tag: "offline speech, no cloud",
+			tone: "teal",
+		},
+		{
+			emoji: "📝",
+			label: "shared notes",
+			body: "a household notepad for the wifi password, the plumber, that recipe. two people can type in the same line at once.",
+			tag: "live, character by character",
+			tone: "lavender",
+		},
+	];
 </script>
 
 <main class="landing">
-	<div class="landing-inner">
-		<nav class="topbar">
-			<span class="logo">tandem</span>
-			<a class="btn btn-ghost btn-small" href="https://github.com/senseikartikey/tandem" target="_blank" rel="noopener">
-				github ↗
-			</a>
-		</nav>
+	<nav class="topbar">
+		<a class="logo" href="/">
+			<span class="logo-dot"></span>
+			tandem
+			<span class="logo-mark">v0.1</span>
+		</a>
+		<div class="topbar-links">
+			<button class="nav-link" onclick={() => scrollToPanel("how-it-works")}>how it works</button>
+			<a
+				class="nav-link"
+				href="https://github.com/senseikartikey/tandem"
+				target="_blank"
+				rel="noopener">github ↗</a
+			>
+			<button class="btn btn-ink btn-small" onclick={() => scrollToPanel("create-panel")}>
+				start a list
+			</button>
+		</div>
+	</nav>
 
-		<section class="hero">
-			<div class="hero-copy">
-				<h1>shared lists that actually work offline.</h1>
-				<p class="tagline">No accounts. No app store. Just a link that works with zero bars.</p>
-				<div class="hero-actions">
-					<button class="btn" onclick={() => scrollToPanel("create-panel")}>create a household</button>
-					<button class="btn btn-ghost" onclick={() => scrollToPanel("join-panel")}>join with a code</button>
+	<section class="hero">
+		<span class="sticker sticker-1" style="--tilt: -12deg" aria-hidden="true">
+			<span class="sticker-inner">
+				<span class="sticker-big">0</span>
+				<span class="sticker-sm">accounts</span>
+			</span>
+		</span>
+		<span class="sticker sticker-2" style="--tilt: 8deg" aria-hidden="true">no app store ✦</span>
+		<span class="sticker sticker-3" style="--tilt: -6deg" aria-hidden="true">works at 1 bar</span>
+
+		<span class="tag hero-tag">local-first · crdt-synced · open source</span>
+
+		<h1 class="hero-title">
+			<span class="word">shared</span>
+			<span class="word">lists</span>
+			<span class="word stroke">that</span>
+			<span class="word">work</span>
+			<span class="word accent">offline<span class="period">.</span></span>
+		</h1>
+
+		<p class="hero-sub">
+			one link, everyone in the house, every trolley. <em>no accounts. no app store. no bars
+			needed.</em>
+		</p>
+
+		<div class="hero-cta-row">
+			<button class="btn btn-ink btn-xl" onclick={() => scrollToPanel("create-panel")}>
+				create a household <span class="btn-arrow">→</span>
+			</button>
+			<button class="btn btn-ghost btn-xl" onclick={() => scrollToPanel("join-panel")}>
+				join with a code
+			</button>
+		</div>
+
+		<p class="hero-meta meta">free forever • installs as an app • ~0 setup</p>
+
+		<div class="hero-art">
+			<div class="mock-card">
+				<div class="mock-card-header">
+					<span>groceries</span>
+					<span class="mock-count">3</span>
 				</div>
+				{#each mockItems as item, i (item)}
+					<div class="mock-item" class:checked={mockChecked[i]}>
+						<span class="icon-circle mock-check">{mockChecked[i] ? "✓" : ""}</span>
+						<span class="mock-text">{item}</span>
+						{#if i === 1}<span class="mock-badge">added by kartikey</span>{/if}
+					</div>
+				{/each}
 			</div>
+			<span class="mock-chip">synced • offline</span>
+		</div>
+	</section>
 
-			<div class="hero-art" aria-hidden="true">
-				<svg class="deco" style="top:-10px; left:-6px;" width="26" height="26" viewBox="0 0 32 32">
-					<path
-						d="M16 2 L17.5 14.5 L30 16 L17.5 17.5 L16 30 L14.5 17.5 L2 16 L14.5 14.5 Z"
-						fill="#ffe566"
-						stroke="#111"
-						stroke-width="1.5"
-					/>
-				</svg>
-				<svg class="deco" style="bottom:6px; right:-14px;" width="60" height="60" viewBox="0 0 80 80">
-					<path
-						d="M40 5 C55 5,75 20,75 40 C75 60,60 75,40 75 C20 75,5 60,5 40 C5 20,25 5,40 5Z"
-						fill="#c4b5fd"
-						stroke="#111"
-						stroke-width="2"
-					/>
-				</svg>
-				<div class="mock-card card">
-					<div class="mock-card-header">groceries</div>
-					{#each mockItems as item, i (item)}
-						<div class="mock-item" class:checked={mockChecked[i]}>
-							<span class="icon-circle mock-check">{mockChecked[i] ? "✓" : ""}</span>
-							<span class="mock-text">{item}</span>
-							{#if i === 1}<span class="mock-badge">added by kartikey</span>{/if}
-						</div>
+	<div class="marquee" aria-hidden="true">
+		<div class="marquee-track">
+			{#each [0, 1] as copy (copy)}
+				<div class="marquee-content">
+					{#each marqueePhrases as phrase (phrase)}
+						{phrase} <span class="marquee-star">✦</span>
 					{/each}
 				</div>
-				<span class="mock-chip">synced • offline</span>
-			</div>
-		</section>
+			{/each}
+		</div>
+	</div>
 
-		<section class="features">
-			<h2>why tandem</h2>
-			<div class="feature-grid">
-				<div class="feature-card feature-lead card">
-					<span class="feature-icon">🍴</span>
-					<h3>fork a list</h3>
-					<p>Draft a version without touching the real list. Merge it back when you're happy, or throw it away — either way, nothing was ever at risk.</p>
+	<section class="how" id="how-it-works">
+		<div class="section-head">
+			<span class="eyebrow">— how it works</span>
+			<h2 class="section-title">four steps. zero passwords.</h2>
+		</div>
+		<div class="steps">
+			{#each steps as step (step.num)}
+				<div class="step">
+					<span class="step-num">{step.num}</span>
+					<span class="step-graphic">{step.emoji}</span>
+					<h3>{step.title}</h3>
+					<p>{step.body}</p>
 				</div>
-				<div class="feature-card card">
-					<span class="feature-icon">📶</span>
-					<h3>works with no signal</h3>
-					<p>Your device is the source of truth. Most list apps break offline — this one doesn't.</p>
-				</div>
-				<div class="feature-card card">
-					<span class="feature-icon">🏷️</span>
-					<h3>see who did what</h3>
-					<p>Every add, edit, and check-off is attributed to a real person, not a guess.</p>
-				</div>
-				<div class="feature-card card">
-					<span class="feature-icon">↩️</span>
-					<h3>undo, anytime</h3>
-					<p>Removed something by mistake? One tap brings it back — items or whole lists.</p>
-				</div>
-				<div class="feature-card card">
-					<span class="feature-icon">🟢</span>
-					<h3>shop together, live</h3>
-					<p>See who else has the list open right now, and watch their check-offs flash in as they happen — no more buying the same thing twice.</p>
-				</div>
-			</div>
-		</section>
+			{/each}
+		</div>
+	</section>
 
-		<YourName />
+	<section class="features">
+		<div class="section-head">
+			<span class="eyebrow">— why tandem</span>
+			<h2 class="section-title">the whole thing, no login.</h2>
+		</div>
+		<div class="feature-grid">
+			{#each features as feature (feature.label)}
+				<div class="feature-card" data-tone={feature.tone}>
+					<span class="feature-emoji">{feature.emoji}</span>
+					<span class="feature-label">{feature.label}</span>
+					<p>{feature.body}</p>
+					<span class="feature-tag">{feature.tag}</span>
+				</div>
+			{/each}
+		</div>
+	</section>
+
+	<section class="quote">
+		<p class="quote-text">
+			nobody buys<br />the milk<br /><span class="quote-accent">twice.</span>
+		</p>
+		<span class="eyebrow">— every household, after one trip</span>
+		<span class="quote-arrows" aria-hidden="true">↓ ↓ ↓</span>
+	</section>
+
+	<section class="start" id="get-started">
+		<div class="section-head">
+			<span class="eyebrow">— ok, enough reading</span>
+			<h2 class="section-title">go make a list.</h2>
+		</div>
+
+		<div class="you-panel">
+			<YourName />
+		</div>
 
 		{#if households.length > 0}
-			<section>
-				<h2>your households</h2>
+			<div class="households">
+				<span class="eyebrow">your households</span>
 				<ul class="household-list">
 					{#each households as h (h.roomId)}
 						<li class="card household-row">
@@ -206,12 +360,14 @@
 						</li>
 					{/each}
 				</ul>
-			</section>
+			</div>
 		{/if}
 
-		<section class="forms-grid">
-			<div class="card form-panel" id="create-panel">
-				<h2>create a household</h2>
+		<div class="forms-grid">
+			<div class="form-panel form-create" id="create-panel">
+				<span class="form-num">01</span>
+				<h3>create a household</h3>
+				<p>name it and you're in. share the code after.</p>
 				<form
 					onsubmit={(e) => {
 						e.preventDefault();
@@ -225,12 +381,16 @@
 						bind:value={newHouseholdName}
 						disabled={busy}
 					/>
-					<button class="btn" type="submit" disabled={busy || !newHouseholdName.trim()}>create</button>
+					<button class="btn btn-ink btn-block" type="submit" disabled={busy || !newHouseholdName.trim()}>
+						create <span class="btn-arrow">→</span>
+					</button>
 				</form>
 			</div>
 
-			<div class="card form-panel" id="join-panel">
-				<h2>join a household</h2>
+			<div class="form-panel form-join" id="join-panel">
+				<span class="form-num">02</span>
+				<h3>join a household</h3>
+				<p>got a code or a link? paste it here.</p>
 				<form
 					onsubmit={(e) => {
 						e.preventDefault();
@@ -251,108 +411,262 @@
 							}
 						}}
 					/>
-					<button class="btn btn-secondary" type="submit" disabled={busy || !joinCode.trim()}>join</button>
+					<button class="btn btn-block" type="submit" disabled={busy || !joinCode.trim()}>
+						join <span class="btn-arrow">→</span>
+					</button>
 				</form>
 			</div>
-		</section>
+		</div>
 
 		{#if error}
 			<p class="error">{error}</p>
 		{/if}
+	</section>
 
-		<footer>
-			<p>
-				local-first, CRDT-synced, built in the open —
-				<a href="https://github.com/senseikartikey/tandem" target="_blank" rel="noopener">source on GitHub</a>.
-			</p>
-		</footer>
-	</div>
+	<footer>
+		<span>© {new Date().getFullYear()} tandem. local-first, CRDT-synced, built in the open.</span>
+		<span class="footer-links">
+			<a href="https://github.com/senseikartikey/tandem" target="_blank" rel="noopener">source</a>
+			<button class="footer-link-btn" onclick={() => scrollToPanel("how-it-works")}>how it works</button>
+			<button class="footer-link-btn" onclick={() => scrollToPanel("create-panel")}>start a list</button>
+		</span>
+	</footer>
 </main>
 
 <style>
+	/* The landing page is the one route that isn't the narrow phone-card
+	   shell: full-bleed bands (poster hero, ink marquee, ink footer) with
+	   their own inner max-width, stacked like a printed poster. */
 	.landing {
-		padding: 0 1.25rem 3rem;
-	}
-	.landing-inner {
-		max-width: 1120px;
-		margin-inline: auto;
+		background: var(--bg-poster);
+		min-height: 100dvh;
 	}
 
 	.topbar {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 1.5rem 0 1rem;
+		gap: 1rem;
+		flex-wrap: wrap;
+		padding: 1.1rem 1.25rem;
+		border-bottom: var(--border);
+		background: var(--bg-poster);
 	}
 	.logo {
-		font-size: 1.3rem;
-		font-weight: 800;
-		letter-spacing: -0.01em;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-family: var(--font-display);
+		font-size: 1.35rem;
+		letter-spacing: -0.03em;
+		text-decoration: none;
+		color: var(--text-primary);
 	}
-	.btn-small {
-		padding: 8px 16px;
+	.logo-dot {
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		background: var(--color-primary);
+		border: var(--border-thin);
+	}
+	.logo-mark {
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		font-weight: 500;
+		opacity: 0.55;
+	}
+	.topbar-links {
+		display: flex;
+		align-items: center;
+		gap: 1.25rem;
+	}
+	.nav-link {
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		font-family: var(--font-mono);
 		font-size: 0.85rem;
+		font-weight: 500;
+		color: var(--text-primary);
+		text-decoration: none;
+		border-bottom: 2px solid transparent;
+	}
+	.nav-link:hover {
+		border-bottom-color: var(--text-primary);
 	}
 
-	/* --- Hero --- */
+	/* --- Hero: centred poster type, stickers pinned to the corners --- */
 	.hero {
 		position: relative;
-		display: flex;
-		flex-direction: column;
-		gap: 2rem;
-		padding: 2rem 0 1rem;
+		text-align: center;
+		padding: 3rem 1.25rem 4rem;
+		border-bottom: var(--border);
+		overflow: hidden;
 	}
-	.hero-copy {
-		max-width: 640px;
+	.hero-tag {
+		margin-bottom: 1.75rem;
 	}
-	.tagline {
-		margin-top: 0.9rem;
-		font-size: 0.98rem;
-		max-width: 480px;
-	}
-	.hero-actions {
+	.hero-title {
+		font-family: var(--font-display);
+		font-size: clamp(3rem, 12vw, 8.5rem);
+		line-height: 0.86;
+		letter-spacing: -0.045em;
+		text-transform: uppercase;
+		margin: 0 auto 1.25rem;
+		max-width: 1200px;
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.75rem;
-		margin-top: 1.75rem;
+		justify-content: center;
+		gap: 0 0.35em;
+	}
+	.hero-title .word {
+		display: inline-block;
+	}
+	.hero-title .stroke {
+		-webkit-text-stroke: 3px var(--border-color);
+		color: transparent;
+	}
+	.hero-title .accent {
+		color: var(--color-primary);
+		-webkit-text-stroke: 2px var(--border-color);
+	}
+	.hero-title .period {
+		color: var(--text-primary);
+		-webkit-text-stroke: 0;
+	}
+	.hero-sub {
+		font-size: 1.15rem;
+		font-weight: 500;
+		color: var(--text-primary);
+		max-width: 620px;
+		margin: 0 auto 2rem;
+		text-wrap: pretty;
+	}
+	.hero-sub em {
+		font-style: normal;
+		display: block;
+		margin-top: 0.6rem;
+		font-family: var(--font-mono);
+		font-size: 0.9rem;
+		opacity: 0.75;
+	}
+	.hero-cta-row {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 1rem;
+		margin-bottom: 1rem;
+	}
+	.hero-meta {
+		margin-bottom: 2.5rem;
 	}
 
+	.sticker-1 {
+		top: 3.5rem;
+		left: 4%;
+		width: 108px;
+		height: 108px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 50%;
+		border: var(--border);
+		background: var(--color-primary);
+		transform: rotate(-12deg);
+		animation: wiggle 4s ease-in-out infinite;
+	}
+	.sticker-inner {
+		text-align: center;
+		line-height: 1;
+	}
+	.sticker-big {
+		display: block;
+		font-size: 2rem;
+	}
+	.sticker-sm {
+		display: block;
+		margin-top: 0.25rem;
+		font-family: var(--font-mono);
+		font-size: 0.62rem;
+	}
+	.sticker-2 {
+		top: 3rem;
+		right: 5%;
+		background: var(--border-color);
+		color: var(--bg-poster);
+		padding: 0.7rem 1.15rem;
+		border-radius: var(--radius-pill);
+		font-size: 0.85rem;
+		transform: rotate(8deg);
+		animation: wiggle 5s ease-in-out infinite reverse;
+	}
+	.sticker-3 {
+		bottom: 4rem;
+		right: 8%;
+		background: var(--color-teal);
+		border: var(--border);
+		border-radius: var(--radius-sm);
+		padding: 0.6rem 1rem;
+		font-size: 0.9rem;
+		transform: rotate(-6deg);
+		animation: wiggle 6s ease-in-out infinite;
+	}
+
+	/* --- Hero art: the live-looking mock list, tilted like a photo --- */
 	.hero-art {
 		position: relative;
-		align-self: center;
 		width: 100%;
-		max-width: 320px;
-		padding: 1rem 0;
+		max-width: 360px;
+		margin: 0 auto;
+		text-align: left;
 	}
 	.mock-card {
-		padding: 1.1rem;
+		background: var(--bg-surface);
+		border: var(--border);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-xl);
+		padding: 1.25rem;
 		display: flex;
 		flex-direction: column;
-		gap: 0.6rem;
-		background: var(--bg-surface);
+		gap: 0.7rem;
+		transform: rotate(-2deg);
 	}
 	.mock-card-header {
-		font-weight: 800;
-		font-size: 1.1rem;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		font-family: var(--font-display);
+		font-size: 1.3rem;
+		text-transform: lowercase;
+		letter-spacing: -0.02em;
 		margin-bottom: 0.2rem;
+	}
+	.mock-count {
+		font-family: var(--font-mono);
+		font-size: 0.8rem;
+		background: var(--color-yellow);
+		border: var(--border-thin);
+		border-radius: var(--radius-pill);
+		padding: 0.15rem 0.6rem;
 	}
 	.mock-item {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
+		gap: 0.7rem;
 		position: relative;
 	}
 	.mock-check {
-		width: 24px;
-		height: 24px;
-		font-size: 0.75rem;
+		width: 26px;
+		height: 26px;
+		font-size: 0.8rem;
+		font-weight: 700;
 		transition:
 			background 0.35s ease,
 			color 0.35s ease;
 	}
 	.mock-item.checked .mock-check {
 		background: var(--color-teal);
-		color: #fff;
 	}
 	.mock-text {
 		font-weight: 600;
@@ -364,95 +678,269 @@
 	}
 	.mock-badge {
 		position: absolute;
-		left: 2.1rem;
+		left: 2.3rem;
 		top: 1.4rem;
-		font-size: 0.62rem;
-		font-weight: 700;
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
 		color: var(--text-secondary);
 		white-space: nowrap;
 	}
 	.mock-chip {
 		position: absolute;
-		bottom: -0.6rem;
-		right: 0.5rem;
+		bottom: -1.5rem;
+		right: -1rem;
 		background: var(--color-teal);
-		color: #fff;
-		font-weight: 700;
-		font-size: 0.7rem;
-		padding: 0.4rem 0.75rem;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		font-weight: 600;
+		padding: 0.45rem 0.85rem;
 		border: var(--border);
 		border-radius: var(--radius-pill);
 		box-shadow: var(--shadow-sm);
+		transform: rotate(4deg);
 	}
 
-	/* --- Features --- */
-	.features {
-		padding: 1rem 0 2.5rem;
+	.marquee-star {
+		opacity: 0.6;
+		padding: 0 0.35em;
 	}
-	.features h2 {
-		margin-bottom: 1.1rem;
+
+	/* --- Section scaffolding shared by how-it-works / features --- */
+	.section-head {
+		max-width: 1160px;
+		margin: 0 auto 2.5rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	.section-title {
+		font-family: var(--font-display);
+		font-size: clamp(2rem, 6vw, 4.5rem);
+		font-weight: 400;
+		line-height: 0.95;
+		letter-spacing: -0.035em;
+		text-transform: lowercase;
+		color: var(--text-primary);
+	}
+
+	.how {
+		padding: 4rem 1.25rem;
+		border-bottom: var(--border);
+		background: var(--bg-page);
+	}
+	.steps {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 1.25rem;
+		max-width: 1160px;
+		margin: 0 auto;
+	}
+	.step {
+		border: var(--border);
+		border-radius: var(--radius-md);
+		padding: 1.5rem;
+		background: var(--bg-surface);
+		box-shadow: var(--shadow-md);
+		transition:
+			transform 0.15s ease,
+			box-shadow 0.15s ease;
+	}
+	.step:hover {
+		transform: translate(-3px, -3px);
+		box-shadow: var(--shadow-lift);
+	}
+	.step:nth-child(2) {
+		background: var(--color-pink);
+	}
+	.step:nth-child(3) {
+		background: var(--color-teal);
+	}
+	.step:nth-child(4) {
+		background: var(--color-lavender);
+	}
+	.step-num {
+		display: inline-block;
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
+		font-weight: 700;
+		background: var(--border-color);
+		color: var(--text-inverse);
+		padding: 0.25rem 0.65rem;
+		border-radius: var(--radius-pill);
+		margin-bottom: 1rem;
+	}
+	.step-graphic {
+		display: block;
+		font-size: 2.75rem;
+		line-height: 1;
+		margin-bottom: 0.9rem;
+	}
+	.step h3 {
+		font-size: 1.4rem;
+		margin-bottom: 0.4rem;
+	}
+	.step p {
+		color: var(--text-primary);
+		opacity: 0.75;
+		font-size: 0.92rem;
+	}
+
+	/* --- Features: flat accent cards, big display labels --- */
+	.features {
+		padding: 4rem 1.25rem;
+		border-bottom: var(--border);
 	}
 	.feature-grid {
 		display: grid;
 		grid-template-columns: 1fr;
-		gap: 1rem;
+		gap: 1.25rem;
+		max-width: 1160px;
+		margin: 0 auto;
 	}
 	.feature-card {
-		padding: 1.25rem;
+		border: var(--border);
+		border-radius: var(--radius-md);
+		box-shadow: var(--shadow-md);
+		padding: 1.75rem 1.5rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		transition:
+			transform 0.15s ease,
+			box-shadow 0.15s ease;
 	}
-	.feature-lead {
-		grid-column: 1 / -1;
+	.feature-card:hover {
+		transform: translate(-3px, -3px) rotate(-1deg);
+		box-shadow: var(--shadow-lift);
+	}
+	.feature-card[data-tone="yellow"] {
 		background: var(--color-yellow);
 	}
-	.feature-icon {
-		font-size: 1.3rem;
-		display: inline-block;
-		margin-bottom: 0.5rem;
+	.feature-card[data-tone="teal"] {
+		background: var(--color-teal);
 	}
-	.feature-card h3 {
-		font-size: 0.92rem;
-		font-weight: 800;
-		margin-bottom: 0.35rem;
+	.feature-card[data-tone="coral"] {
+		background: var(--color-primary);
 	}
-	.feature-lead h3 {
-		font-size: 1.05rem;
+	.feature-card[data-tone="lavender"] {
+		background: var(--color-lavender);
+	}
+	.feature-card[data-tone="pink"] {
+		background: var(--color-pink);
+	}
+	.feature-card[data-tone="paper"] {
+		background: var(--bg-surface);
+	}
+	.feature-emoji {
+		font-size: 2.4rem;
+		line-height: 1;
+		margin-bottom: 0.4rem;
+	}
+	.feature-label {
+		font-family: var(--font-display);
+		font-size: 1.75rem;
+		letter-spacing: -0.03em;
+		text-transform: uppercase;
+		line-height: 1;
 	}
 	.feature-card p {
-		font-size: 0.82rem;
-		line-height: 1.45;
+		color: var(--text-primary);
+		opacity: 0.8;
+		font-size: 0.92rem;
+		flex: 1;
+	}
+	.feature-tag {
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		opacity: 0.65;
 	}
 
-	section {
-		margin-bottom: 1.75rem;
+	/* --- Pull quote --- */
+	.quote {
+		padding: 5rem 1.25rem;
+		text-align: center;
+		border-bottom: var(--border);
+		background: var(--border-color);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 1rem;
 	}
-	section h2 {
-		margin-bottom: 0.65rem;
+	.quote .eyebrow,
+	.quote-arrows {
+		color: var(--text-inverse);
+		opacity: 0.6;
+	}
+	.quote-text {
+		font-family: var(--font-display);
+		font-size: clamp(2.75rem, 11vw, 7rem);
+		line-height: 0.88;
+		letter-spacing: -0.04em;
+		text-transform: uppercase;
+		color: var(--text-inverse);
+	}
+	.quote-accent {
+		color: var(--color-primary);
+	}
+	.quote-arrows {
+		font-family: var(--font-mono);
+		font-size: 1.1rem;
+		letter-spacing: 0.3em;
+		opacity: 0.5;
+	}
+
+	/* --- Start: the actual create/join controls --- */
+	.start {
+		padding: 4rem 1.25rem;
+		border-bottom: var(--border);
+		background: var(--bg-page);
+	}
+	.you-panel,
+	.households,
+	.forms-grid {
+		max-width: 1160px;
+		margin: 0 auto;
+	}
+	.you-panel {
+		margin-bottom: 0.5rem;
+	}
+	.households {
+		margin-bottom: 2rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
 	}
 	.household-list {
 		list-style: none;
 		padding: 0;
 		margin: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.6rem;
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 0.75rem;
 	}
 	.household-row {
 		display: flex;
 		align-items: center;
-		padding: 0.25rem 0.25rem 0.25rem 1rem;
+		padding: 0.35rem 0.35rem 0.35rem 1.15rem;
 		transition:
-			transform 0.1s ease,
-			box-shadow 0.1s ease;
+			transform 0.12s ease,
+			box-shadow 0.12s ease;
 	}
 	.household-row:hover {
-		transform: translate(2px, 2px);
-		box-shadow: var(--shadow-md-hover);
+		transform: translate(-2px, -2px);
+		box-shadow: var(--shadow-lg);
 	}
 	.household-card {
 		flex: 1;
-		padding: 0.75rem 0;
+		padding: 0.8rem 0;
 		text-decoration: none;
-		font-weight: 700;
+		font-family: var(--font-display);
+		font-size: 1.1rem;
+		text-transform: lowercase;
+		letter-spacing: -0.02em;
 		color: var(--text-primary);
 	}
 	.household-row .remove {
@@ -468,56 +956,170 @@
 		color: var(--color-primary);
 	}
 
-	/* --- Forms --- */
 	.forms-grid {
 		display: grid;
 		grid-template-columns: 1fr;
-		gap: 1rem;
+		gap: 1.25rem;
 		scroll-margin-top: 1.5rem;
 	}
 	.form-panel {
-		padding: 1.5rem;
+		position: relative;
+		border: var(--border);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-lg);
+		padding: 2rem 1.75rem;
 		scroll-margin-top: 1.5rem;
-	}
-	form {
 		display: flex;
+		flex-direction: column;
 		gap: 0.5rem;
 	}
-	form .input {
-		flex: 1;
+	.form-create {
+		background: var(--bg-surface);
+	}
+	.form-join {
+		background: var(--color-lavender);
+	}
+	.form-num {
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
+		font-weight: 700;
+		background: var(--border-color);
+		color: var(--text-inverse);
+		padding: 0.25rem 0.65rem;
+		border-radius: var(--radius-pill);
+		align-self: flex-start;
+		margin-bottom: 0.5rem;
+	}
+	.form-panel h3 {
+		font-size: 1.6rem;
+	}
+	.form-panel p {
+		color: var(--text-primary);
+		opacity: 0.7;
+		font-size: 0.9rem;
+	}
+	.form-panel form {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		margin-top: 0.75rem;
 	}
 	.error {
-		color: var(--color-primary);
+		max-width: 1160px;
+		margin: 1.25rem auto 0;
+		font-family: var(--font-mono);
 		font-weight: 600;
+		color: var(--text-primary);
+		background: var(--color-primary);
+		border: var(--border);
+		border-radius: var(--radius-sm);
+		box-shadow: var(--shadow-sm);
+		padding: 0.85rem 1.1rem;
 	}
 
 	footer {
-		padding-top: 1.5rem;
-		border-top: var(--border);
+		background: var(--border-color);
+		color: var(--text-inverse);
+		font-family: var(--font-mono);
+		font-size: 0.8rem;
+		padding: 2rem 1.25rem;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 1rem;
+		align-items: center;
+		justify-content: space-between;
 	}
-	footer p {
-		font-size: 0.82rem;
+	.footer-links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 1.25rem;
+	}
+	footer a,
+	.footer-link-btn {
+		color: var(--text-inverse);
+		font-family: var(--font-mono);
+		font-size: 0.8rem;
+		font-weight: 500;
+		text-decoration: none;
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+	}
+	footer a:hover,
+	.footer-link-btn:hover {
+		color: var(--color-primary);
 	}
 
-	@media (min-width: 860px) {
-		.hero {
-			flex-direction: row;
-			align-items: center;
-			justify-content: space-between;
-			padding: 3.5rem 0 1.5rem;
+	/* Stickers only exist where there's room for them to sit outside the
+	   type; on narrow screens they'd land on top of the headline. */
+	@media (max-width: 900px) {
+		.sticker {
+			display: none;
 		}
-		.hero-copy h1 {
-			font-size: clamp(2.4rem, 3.6vw, 3.4rem);
+	}
+
+	/* Ragged-width pills read as sloppy once they stack; on phones both
+	   hero CTAs take the full column. */
+	@media (max-width: 560px) {
+		.hero-cta-row .btn {
+			width: 100%;
 		}
-		.hero-art {
-			max-width: 340px;
-			flex-shrink: 0;
+	}
+
+	@media (min-width: 700px) {
+		.topbar,
+		.hero,
+		.how,
+		.features,
+		.quote,
+		.start,
+		footer {
+			padding-inline: 2.5rem;
 		}
-		.feature-grid {
+		.steps {
+			grid-template-columns: repeat(2, 1fr);
+		}
+		.feature-grid,
+		.household-list {
 			grid-template-columns: repeat(2, 1fr);
 		}
 		.forms-grid {
 			grid-template-columns: 1fr 1fr;
+		}
+		.form-panel form {
+			flex-direction: row;
+			align-items: center;
+		}
+		.form-panel form .input {
+			flex: 1;
+		}
+		.form-panel form .btn {
+			width: auto;
+			flex-shrink: 0;
+		}
+	}
+
+	@media (min-width: 1000px) {
+		.hero {
+			padding-top: 4.5rem;
+		}
+		.steps {
+			grid-template-columns: repeat(4, 1fr);
+		}
+		/* Staggered like a hand of cards -- the hover lift subtracts from
+		   this offset rather than replacing it, so nothing jumps. */
+		.steps .step:nth-child(2n) {
+			transform: translateY(20px);
+		}
+		.steps .step:nth-child(2n):hover {
+			transform: translate(-3px, 17px);
+		}
+		.feature-grid {
+			grid-template-columns: repeat(3, 1fr);
+		}
+		.household-list {
+			grid-template-columns: repeat(3, 1fr);
 		}
 	}
 </style>

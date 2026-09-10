@@ -56,7 +56,7 @@
 	.scanner-overlay {
 		position: fixed;
 		inset: 0;
-		background: rgba(17, 17, 17, 0.65);
+		background: rgba(17, 17, 17, 0.7);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -66,17 +66,16 @@
 	.scanner-panel {
 		width: 100%;
 		max-width: 420px;
-		padding: 1.25rem;
+		padding: 1.35rem;
+		background: var(--bg-surface);
+		box-shadow: var(--shadow-xl);
 	}
 	.scanner-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		margin-bottom: 0.85rem;
-	}
-	.btn-small {
-		padding: 8px 16px;
-		font-size: 0.85rem;
+		gap: 1rem;
+		margin-bottom: 1rem;
 	}
 	.scanner-video {
 		width: 100%;
@@ -86,12 +85,14 @@
 		border: var(--border);
 		border-radius: var(--radius-md);
 	}
-	.scanner-hint {
-		text-align: center;
-		margin-top: 0.6rem;
-	}
+	.scanner-hint,
 	.scanner-error {
 		text-align: center;
-		color: var(--color-primary);
+		margin-top: 0.75rem;
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
+	}
+	.scanner-error {
+		color: var(--text-primary);
 	}
 </style>

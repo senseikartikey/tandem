@@ -65,48 +65,61 @@
 
 <style>
 	.activity-panel {
-		margin-top: 0.75rem;
-		padding: 1.25rem;
+		margin-top: 0.85rem;
+		padding: 1.35rem;
+		background: var(--bg-surface);
 	}
 	.empty {
 		text-align: center;
+		font-family: var(--font-mono);
+		font-size: 0.85rem;
 		color: var(--text-secondary);
 	}
 	.entries {
 		list-style: none;
 		padding: 0;
-		margin: 0 0 0.75rem;
+		margin: 0 0 0.85rem;
 		display: flex;
 		flex-direction: column;
-		gap: 0.6rem;
+		gap: 0.75rem;
 	}
+	/* Each entry is a rule-separated log line: who, then what, in the mono
+	   "machine record" voice used for metadata everywhere else. */
 	.entries li {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.75rem;
+		padding-bottom: 0.75rem;
+		border-bottom: 2px dashed rgba(17, 17, 17, 0.15);
+	}
+	.entries li:last-child {
+		border-bottom: none;
+		padding-bottom: 0;
 	}
 	.entry-text {
 		display: flex;
 		flex-direction: column;
+		gap: 0.1rem;
 	}
 	.actor {
-		font-weight: 700;
+		font-family: var(--font-display);
+		font-size: 0.95rem;
+		text-transform: lowercase;
+		letter-spacing: -0.02em;
 	}
 	.action {
-		font-size: 0.85rem;
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
 		color: var(--text-secondary);
-	}
-	.btn-small {
-		padding: 8px 16px;
-		font-size: 0.85rem;
-		flex-shrink: 0;
 	}
 	.btn-close {
 		background: none;
 		border: none;
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
 		color: var(--text-secondary);
-		font-weight: 600;
+		text-decoration: underline;
 		cursor: pointer;
 	}
 </style>

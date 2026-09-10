@@ -6,11 +6,17 @@ export interface PresenceEntry {
   name: string;
   color: string;
   lastTouch: { itemId: string; ts: number } | null;
+  // Which shared note this peer currently has open, if any. Ephemeral by
+  // nature -- "is someone in here with me right now" is exactly the kind of
+  // fact that should vanish when they close the tab, which is what awareness
+  // gives for free and the document CRDT deliberately doesn't.
+  editingNoteId: string | null;
 }
 
 interface AwarenessUserState {
   user?: { name: string; color: string };
   lastTouch?: { itemId: string; ts: number };
+  editingNoteId?: string | null;
 }
 
 // Awareness is Yjs's ephemeral-state protocol -- a separate mechanism from
@@ -26,9 +32,15 @@ export function presenceStore(awareness: Awareness): Readable<PresenceEntry[]> {
         const entries: PresenceEntry[] = [];
         awareness.getStates().forEach((state, clientId) => {
           if (clientId === awareness.clientID) return; // never show yourself
-          const { user, lastTouch } = state as AwarenessUserState;
+          const { user, lastTouch, editingNoteId } = state as AwarenessUserState;
           if (!user) return;
-          entries.push({ clientId, name: user.name, color: user.color, lastTouch: lastTouch ?? null });
+          entries.push({
+            clientId,
+            name: user.name,
+            color: user.color,
+            lastTouch: lastTouch ?? null,
+            editingNoteId: editingNoteId ?? null,
+          });
         });
         run(entries);
       };

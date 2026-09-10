@@ -89,6 +89,8 @@
 			.sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0)),
 	);
 
+	let noteCount = $derived((household?.notes ?? []).filter((n) => !n.archived).length);
+
 	function removedByLabel(listId: string): string | null {
 		const entry = activity.find((e) => e.listId === listId && e.type === "list.archived");
 		return entry?.actorLabel ?? null;
@@ -124,7 +126,10 @@
 	<a href="/" class="back">&larr; households</a>
 
 	{#if household}
-		<h1>{household.name}</h1>
+		<header class="head">
+			<span class="eyebrow">— household</span>
+			<h1>{household.name}</h1>
+		</header>
 
 		{#if mergedCount !== null}
 			<div class="card merged-banner">
@@ -141,9 +146,11 @@
 
 		<YourName />
 
+		<span class="eyebrow lists-label">— your lists</span>
+
 		<div class="lists">
 			{#each household.lists.filter((l) => !l.archived) as list, i (list.id)}
-				<div class="card card-flat list-row">
+				<div class="card list-row" style={`--row-tone:${["#4ecdc4", "#ffe566", "#f9a8b8", "#c4b5fd"][i % 4]}`}>
 					<a class="list-card" href={`/h/${roomId}/${list.id}`}>
 						<span class="list-name-wrap">
 							<span class="list-name">{list.name}</span>
@@ -151,7 +158,7 @@
 								<span class="forked-tag">🍴 fork</span>
 							{/if}
 						</span>
-						<span class="count" style={`background:${["#4ecdc4", "#ffe566", "#f9a8b8", "#c4b5fd"][i % 4]}`}>
+						<span class="count">
 							{list.items.filter((i) => !i.archived).length}
 						</span>
 					</a>
@@ -178,13 +185,29 @@
 			<button class="btn" type="submit" disabled={!newListName.trim()}>add list</button>
 		</form>
 
-		<button class="btn btn-ghost invite-button" onclick={openInvite}>invite someone</button>
+		<a class="notes-link" href={`/h/${roomId}/notes`}>
+			<span class="notes-icon">📝</span>
+			<span class="notes-text">
+				<span class="notes-title">shared notes</span>
+				<span class="notes-sub">
+					{noteCount === 0
+						? "the wifi password, the plumber, that recipe"
+						: `${noteCount} ${noteCount === 1 ? "note" : "notes"} everyone can type in`}
+				</span>
+			</span>
+			<span class="notes-arrow">→</span>
+		</a>
+
+		<button class="btn btn-ink btn-block invite-button" onclick={openInvite}>
+			invite someone <span class="btn-arrow">→</span>
+		</button>
 
 		{#if showInvite}
 			<div class="card invite-panel">
 				{#if inviteError}
 					<p class="error">{inviteError}</p>
 				{:else if inviteQr}
+					<span class="eyebrow">— scan or share</span>
 					<img class="qr" src={inviteQr} alt="Invite QR code" width="200" height="200" />
 					<p class="code">{inviteCode}</p>
 					<button class="btn btn-teal" onclick={shareInvite}>share link</button>
@@ -228,40 +251,74 @@
 	main {
 		padding: 1.5rem 1.25rem 3rem;
 	}
+	/* The back link reads as a physical tab clipped to the top of the view,
+	   not as body-copy text -- same border/shadow language as everything
+	   else on the page. */
 	.back {
-		display: inline-block;
-		margin-bottom: 1rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		margin-bottom: 1.5rem;
+		padding: 0.5rem 1rem;
+		background: var(--bg-surface);
+		border: var(--border);
+		border-radius: var(--radius-pill);
+		box-shadow: var(--shadow-sm);
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
+		font-weight: 500;
+		color: var(--text-primary);
 		text-decoration: none;
-		color: var(--text-secondary);
-		font-weight: 600;
+		transition:
+			transform 0.12s ease,
+			box-shadow 0.12s ease;
+	}
+	.back:hover {
+		transform: translate(-2px, -2px);
+		box-shadow: var(--shadow-md);
+	}
+	.head {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		margin-bottom: 1.5rem;
 	}
 	h1 {
-		margin-bottom: 1.5rem;
+		font-size: clamp(2.4rem, 11vw, 3.6rem);
+	}
+	.lists-label {
+		display: block;
+		margin-bottom: 0.75rem;
 	}
 	.lists {
 		display: flex;
 		flex-direction: column;
-		gap: 0.6rem;
-		margin-bottom: 1.5rem;
+		gap: 0.85rem;
+		margin-bottom: 1.75rem;
 	}
+	/* Each row takes its accent as a full flat fill -- the same treatment the
+	   landing's feature cards use -- so a household reads as a stack of
+	   distinct cards without a rail stripe doing the work. */
 	.list-row {
 		display: flex;
 		align-items: center;
-		padding: 0.25rem 0.25rem 0.25rem 1rem;
+		padding: 0.3rem 0.3rem 0.3rem 1.1rem;
+		background: var(--row-tone, var(--color-teal));
 		transition:
-			transform 0.1s ease,
-			box-shadow 0.1s ease;
+			transform 0.12s ease,
+			box-shadow 0.12s ease;
 	}
 	.list-row:hover {
-		transform: translate(2px, 2px);
-		box-shadow: var(--shadow-md-hover);
+		transform: translate(-2px, -2px);
+		box-shadow: var(--shadow-lg);
 	}
 	.list-card {
 		flex: 1;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 0.75rem 0;
+		gap: 0.75rem;
+		padding: 0.85rem 0;
 		text-decoration: none;
 		color: var(--text-primary);
 	}
@@ -280,13 +337,19 @@
 	.list-name-wrap {
 		display: flex;
 		flex-direction: column;
+		gap: 0.15rem;
 	}
 	.list-name {
-		font-weight: 700;
+		font-family: var(--font-display);
+		font-size: 1.15rem;
+		letter-spacing: -0.02em;
+		text-transform: lowercase;
 	}
 	.forked-tag {
-		font-size: 0.72rem;
-		font-weight: 600;
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
 		color: var(--text-secondary);
 	}
 	.merged-banner {
@@ -294,8 +357,9 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
-		padding: 0.85rem 1.1rem;
-		margin-bottom: 1rem;
+		padding: 1rem 1.15rem;
+		margin-bottom: 1.25rem;
+		background: var(--color-teal);
 	}
 	.merged-banner p {
 		font-weight: 600;
@@ -305,10 +369,12 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		min-width: 1.6rem;
-		height: 1.6rem;
-		padding: 0 0.4rem;
-		font-size: 0.8rem;
+		min-width: 2rem;
+		height: 2rem;
+		padding: 0 0.5rem;
+		background: var(--bg-surface);
+		font-family: var(--font-mono);
+		font-size: 0.85rem;
 		font-weight: 700;
 		border: var(--border);
 		border-radius: var(--radius-pill);
@@ -316,57 +382,120 @@
 	}
 	.add-list {
 		display: flex;
-		gap: 0.5rem;
-		margin-bottom: 1.5rem;
+		gap: 0.6rem;
+		margin-bottom: 1.75rem;
 	}
 	.add-list .input {
 		flex: 1;
+	}
+	/* Notes are a peer of lists, not a setting -- so the entry point is a
+	   full-width card in the flow, not a link buried in a menu. */
+	.notes-link {
+		display: flex;
+		align-items: center;
+		gap: 0.9rem;
+		margin-bottom: 0.85rem;
+		padding: 1rem 1.15rem;
+		background: var(--color-yellow);
+		border: var(--border);
+		border-radius: var(--radius-md);
+		box-shadow: var(--shadow-md);
+		text-decoration: none;
+		color: var(--text-primary);
+		transition:
+			transform 0.12s ease,
+			box-shadow 0.12s ease;
+	}
+	.notes-link:hover {
+		transform: translate(-2px, -2px);
+		box-shadow: var(--shadow-lg);
+	}
+	.notes-icon {
+		font-size: 1.5rem;
+		line-height: 1;
+	}
+	.notes-text {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+	.notes-title {
+		font-family: var(--font-display);
+		font-size: 1.15rem;
+		letter-spacing: -0.02em;
+		text-transform: lowercase;
+	}
+	.notes-sub {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		opacity: 0.75;
+	}
+	.notes-arrow {
+		font-size: 1.2rem;
 	}
 	.invite-button {
 		width: 100%;
 	}
 	.invite-panel {
 		margin-top: 1.5rem;
-		padding: 1.5rem;
+		padding: 1.75rem 1.5rem;
 		text-align: center;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.9rem;
+		background: var(--color-yellow);
 	}
 	.qr {
 		border: var(--border);
 		border-radius: var(--radius-sm);
+		box-shadow: var(--shadow-sm);
+		background: #fff;
 	}
+	/* The code gets read aloud across a room -- mono, spaced, and as big as
+	   the card allows. */
 	.code {
-		font-size: 1.5rem;
-		letter-spacing: 0.1em;
-		font-weight: 800;
-		margin: 0.75rem 0;
+		font-family: var(--font-mono);
+		font-size: 1.75rem;
+		letter-spacing: 0.18em;
+		font-weight: 700;
+		color: var(--text-primary);
+		margin: 0;
 	}
 	.btn-close {
 		background: none;
 		border: none;
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
 		color: var(--text-secondary);
-		font-weight: 600;
-		margin-top: 0.75rem;
+		text-decoration: underline;
 		cursor: pointer;
 	}
 	.error {
-		color: var(--color-primary);
+		font-family: var(--font-mono);
 		font-weight: 600;
+		color: var(--text-primary);
 	}
 	.removed-button {
 		width: 100%;
-		margin-top: 0.75rem;
+		margin-top: 0.85rem;
 	}
 	.removed-panel {
-		margin-top: 0.75rem;
-		padding: 1.25rem;
+		margin-top: 0.85rem;
+		padding: 1.35rem;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
 	}
 	.removed-list {
 		list-style: none;
 		padding: 0;
-		margin: 0 0 0.75rem;
+		margin: 0 0 0.9rem;
+		width: 100%;
 		display: flex;
 		flex-direction: column;
-		gap: 0.6rem;
+		gap: 0.75rem;
 	}
 	.removed-list li {
 		display: flex;
@@ -379,14 +508,13 @@
 		flex-direction: column;
 	}
 	.removed-name {
-		font-weight: 700;
+		font-family: var(--font-display);
+		font-size: 1rem;
+		text-transform: lowercase;
 	}
 	.removed-by {
-		font-size: 0.8rem;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
 		color: var(--text-secondary);
-	}
-	.btn-small {
-		padding: 8px 16px;
-		font-size: 0.85rem;
 	}
 </style>

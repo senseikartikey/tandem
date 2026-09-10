@@ -13,6 +13,7 @@
 	import PresenceAvatars from "$lib/components/PresenceAvatars.svelte";
 	import { bindYText } from "$lib/actions/bind-y-text";
 	import { lookupProductByBarcode } from "$lib/product-lookup";
+	import { supportsVoiceCapture } from "$lib/voice/transcriber.js";
 
 	// See h/[roomId]/+page.svelte's comment on why the typed PageProps params
 	// are used here instead of $app/state's broadly-typed page.params.
@@ -34,6 +35,7 @@
 	let presence = $state<PresenceEntry[]>([]);
 	let newItemText = $state("");
 	let showScanner = $state(false);
+	let showVoice = $state(false);
 	let scanLookupPending = $state(false);
 	let scanLookupMissed = $state(false);
 	let editingItemId = $state<string | null>(null);
@@ -161,6 +163,14 @@
 		unsubscribePresence?.();
 	});
 
+	// One spoken sentence becomes several ordinary addItem calls, so voice
+	// items are indistinguishable from typed ones the moment they land:
+	// same attribution, same activity entries, same undo. Nothing in the
+	// document knows or cares that a microphone was involved.
+	function addSpokenItems(texts: string[]): void {
+		for (const text of texts) session?.addItem(listId, text);
+	}
+
 	function addItem(): void {
 		const text = newItemText.trim();
 		if (!text || !session) return;
@@ -238,7 +248,10 @@
 	<a href={`/h/${roomId}`} class="back">&larr; {household?.name ?? "household"}</a>
 
 	{#if list}
-		<h1>{list.name}</h1>
+		<header class="head">
+			<span class="eyebrow">— list</span>
+			<h1>{list.name}</h1>
+		</header>
 
 		{#if forkSourceName}
 			<div class="card fork-banner">
@@ -269,6 +282,17 @@
 				oninput={() => (scanLookupMissed = false)}
 				autocomplete="off"
 			/>
+			{#if supportsVoiceCapture()}
+				<button
+					class="btn btn-ghost scan-btn"
+					type="button"
+					onclick={() => (showVoice = true)}
+					aria-label="Add items by voice"
+					title="say what you need"
+				>
+					🎙️
+				</button>
+			{/if}
 			<button
 				class="btn btn-ghost scan-btn"
 				type="button"
@@ -292,6 +316,16 @@
 			     app's whole "fast, offline-first" pitch means avoiding. -->
 			{#await import("$lib/components/BarcodeScanner.svelte") then { default: BarcodeScanner }}
 				<BarcodeScanner onDetected={handleBarcode} onClose={() => (showScanner = false)} />
+			{/await}
+		{/if}
+
+		{#if showVoice}
+			<!-- Dynamically imported for the same reason as the scanner above,
+			     only more so: transformers.js is a full ONNX runtime, and the
+			     model weights behind it are tens of megabytes. Neither should
+			     ever be on the path of simply opening a list. -->
+			{#await import("$lib/components/VoiceCapture.svelte") then { default: VoiceCapture }}
+				<VoiceCapture onItems={addSpokenItems} onClose={() => (showVoice = false)} />
 			{/await}
 		{/if}
 
@@ -381,32 +415,56 @@
 		padding: 1.5rem 1.25rem 3rem;
 	}
 	.back {
-		display: inline-block;
-		margin-bottom: 1rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		margin-bottom: 1.5rem;
+		padding: 0.5rem 1rem;
+		background: var(--bg-surface);
+		border: var(--border);
+		border-radius: var(--radius-pill);
+		box-shadow: var(--shadow-sm);
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
+		font-weight: 500;
+		color: var(--text-primary);
 		text-decoration: none;
-		color: var(--text-secondary);
-		font-weight: 600;
+		transition:
+			transform 0.12s ease,
+			box-shadow 0.12s ease;
+	}
+	.back:hover {
+		transform: translate(-2px, -2px);
+		box-shadow: var(--shadow-md);
+	}
+	.head {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		margin-bottom: 1.25rem;
 	}
 	h1 {
-		margin-bottom: 1rem;
+		font-size: clamp(2.4rem, 11vw, 3.6rem);
 	}
 	.add-item {
 		display: flex;
-		gap: 0.5rem;
-		margin-bottom: 1.25rem;
+		gap: 0.6rem;
+		margin-bottom: 1.5rem;
 	}
 	.add-item .input {
 		flex: 1;
+		min-width: 0;
 	}
 	.scan-btn {
 		flex-shrink: 0;
-		padding: 12px;
-		font-size: 1.1rem;
+		padding: 12px 16px;
+		font-size: 1.2rem;
 	}
 	.scan-missed {
-		margin: -0.75rem 0 1.25rem;
-		font-size: 0.8rem;
-		color: var(--color-primary);
+		margin: -1rem 0 1.5rem;
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
+		color: var(--text-primary);
 	}
 	.items {
 		list-style: none;
@@ -414,14 +472,32 @@
 		margin: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: 0.7rem;
 	}
 	.items li {
 		display: flex;
 		flex-direction: column;
 		align-items: stretch;
 		gap: 0.5rem;
-		padding: 0.7rem 0.85rem;
+		padding: 0.8rem 0.9rem;
+		transition:
+			transform 0.12s ease,
+			box-shadow 0.12s ease,
+			background 0.25s ease;
+	}
+	.items li:hover {
+		transform: translate(-2px, -2px);
+		box-shadow: var(--shadow-md);
+	}
+	/* A checked item visibly leaves the "to buy" set: it goes flat against
+	   the page instead of sitting proud of it. */
+	.items li.checked {
+		background: var(--bg-page);
+		box-shadow: none;
+	}
+	.items li.checked:hover {
+		transform: translate(0, 0);
+		box-shadow: none;
 	}
 	.item-row {
 		display: flex;
@@ -433,10 +509,10 @@
 	}
 	@keyframes flash-pulse {
 		0% {
-			box-shadow: 0 0 0 3px var(--flash-color);
+			box-shadow: 0 0 0 4px var(--flash-color);
 		}
 		100% {
-			box-shadow: 0 0 0 3px transparent;
+			box-shadow: 0 0 0 4px transparent;
 		}
 	}
 	.drag-handle {
@@ -457,26 +533,31 @@
 		box-shadow: none;
 	}
 	.check {
+		font-size: 0.95rem;
 		font-weight: 800;
 		color: var(--color-teal);
 	}
 	.items li.checked .check {
 		background: var(--color-teal);
-		color: #ffffff;
+		color: var(--text-primary);
 	}
 	.text-wrap {
 		flex: 1;
+		min-width: 0;
 		display: flex;
 		flex-direction: column;
 		align-items: flex-start;
+		gap: 0.1rem;
 	}
 	.text {
 		text-align: left;
 		background: none;
 		border: none;
 		padding: 0;
-		font: inherit;
-		font-weight: 600;
+		font-family: var(--font-display);
+		font-size: 1.05rem;
+		letter-spacing: -0.02em;
+		text-transform: lowercase;
 		color: var(--text-primary);
 		cursor: pointer;
 	}
@@ -485,35 +566,36 @@
 		text-decoration: line-through;
 	}
 	.added-by {
-		font-size: 0.75rem;
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
 		color: var(--text-secondary);
 	}
 	.list-actions {
 		display: flex;
-		gap: 0.5rem;
-		margin-top: 1.25rem;
+		gap: 0.6rem;
+		margin-top: 1.5rem;
 	}
 	.list-actions .btn {
 		flex: 1;
 	}
 	.fork-banner {
-		padding: 1rem 1.25rem;
-		margin-bottom: 1rem;
+		padding: 1.15rem 1.25rem;
+		margin-bottom: 1.25rem;
+		background: var(--color-lavender);
 	}
 	.fork-banner p {
-		margin-bottom: 0.75rem;
+		color: var(--text-primary);
+		margin-bottom: 0.85rem;
 	}
 	.fork-actions {
 		display: flex;
-		gap: 0.5rem;
-	}
-	.btn-small {
-		padding: 8px 16px;
-		font-size: 0.85rem;
+		flex-wrap: wrap;
+		gap: 0.6rem;
 	}
 	.edit-input {
 		flex: 1;
-		padding: 6px 10px;
+		min-width: 0;
+		padding: 8px 12px;
 		box-shadow: none;
 	}
 	.remove {
@@ -545,16 +627,18 @@
 		width: 100%;
 		box-sizing: border-box;
 		resize: vertical;
-		font: inherit;
-		font-size: 0.85rem;
-		padding: 0.5rem 0.65rem;
-		border-radius: 10px;
-		border: var(--border);
+		font-family: var(--font);
+		font-size: 0.88rem;
+		padding: 0.6rem 0.75rem;
+		border-radius: var(--radius-sm);
+		border: var(--border-thin);
 		background: var(--bg-page);
 		color: var(--text-primary);
 	}
 	.empty {
 		text-align: center;
-		margin-top: 2rem;
+		margin-top: 2.5rem;
+		font-family: var(--font-mono);
+		font-size: 0.85rem;
 	}
 </style>

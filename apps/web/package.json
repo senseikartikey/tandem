@@ -14,16 +14,17 @@
 		"lint": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
 	},
 	"dependencies": {
+		"@huggingface/transformers": "^4.2.0",
 		"@tandem/doc-schema": "workspace:*",
-		"fractional-indexing": "^3.2.0",
 		"@zxing/browser": "^0.2.1",
 		"@zxing/library": "^0.23.0",
+		"fractional-indexing": "^3.2.0",
 		"qrcode": "^1.5.4",
 		"svelte-dnd-action": "^0.9.78",
 		"uuid": "^11.0.0",
-		"y-textarea": "^1.0.2",
 		"y-indexeddb": "^9.0.12",
 		"y-protocols": "^1.0.6",
+		"y-textarea": "^1.0.2",
 		"y-webrtc": "^10.3.0",
 		"y-websocket": "^2.1.0",
 		"yjs": "^13.6.0"

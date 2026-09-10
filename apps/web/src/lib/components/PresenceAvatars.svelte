@@ -27,29 +27,30 @@
 	.presence-row {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 1rem;
+		gap: 0.6rem;
+		margin-bottom: 1.25rem;
 	}
 	.presence-avatar {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 28px;
-		height: 28px;
+		width: 32px;
+		height: 32px;
 		flex-shrink: 0;
 		border: var(--border);
 		border-radius: 50%;
 		box-shadow: var(--shadow-sm);
-		font-weight: 800;
-		font-size: 0.8rem;
+		font-family: var(--font-display);
+		font-size: 0.85rem;
 		color: var(--text-on-accent);
 	}
 	.presence-avatar:not(:first-child) {
-		margin-left: -0.6rem;
+		margin-left: -0.7rem;
 	}
 	.presence-label {
-		font-size: 0.8rem;
-		font-weight: 600;
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		font-weight: 500;
 		color: var(--text-secondary);
 	}
 </style>

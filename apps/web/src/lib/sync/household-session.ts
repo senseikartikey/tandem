@@ -28,6 +28,21 @@ export interface HouseholdSession {
   // become real Y.Text ops; a wrapper that took a whole string and diffed it
   // itself would just be reinventing what the binding library already does.
   getItemNoteText(listId: string, itemId: string): Y.Text;
+  createNote(title: string): string;
+  renameNote(noteId: string, title: string): void;
+  archiveNote(noteId: string): void;
+  unarchiveNote(noteId: string): void;
+  // Records "someone edited this note, and when". Separate from the body
+  // edits themselves and expected to be called sparingly -- see touchNote in
+  // doc-schema for why a per-keystroke bump would be the wrong shape.
+  touchNote(noteId: string): void;
+  // Same live-CRDT-handle exception as getItemNoteText, for the same reason:
+  // a note body is meant to be typed into by two people at once.
+  getNoteBodyText(noteId: string): Y.Text;
+  // Ephemeral "I have this note open" signal for other peers. Pass null on
+  // leaving, so a closed editor stops claiming a seat immediately rather
+  // than waiting out the awareness timeout.
+  setEditingNote(noteId: string | null): void;
   destroy(): void;
 }
 
@@ -112,6 +127,13 @@ function wrapSession(roomId: string, sync: Awaited<ReturnType<typeof connectHous
     reorderItem: (listId, itemId, beforeItemId, afterItemId) =>
       schema.reorderItem(sync.doc, listId, itemId, beforeItemId, afterItemId, getDeviceLabel()),
     getItemNoteText: (listId, itemId) => schema.getItemNoteText(sync.doc, listId, itemId),
+    createNote: (title) => schema.createNote(sync.doc, title, getDeviceLabel()),
+    renameNote: (noteId, title) => schema.renameNote(sync.doc, noteId, title, getDeviceLabel()),
+    archiveNote: (noteId) => schema.archiveNote(sync.doc, noteId, getDeviceLabel()),
+    unarchiveNote: (noteId) => schema.unarchiveNote(sync.doc, noteId, getDeviceLabel()),
+    touchNote: (noteId) => schema.touchNote(sync.doc, noteId, getDeviceLabel()),
+    getNoteBodyText: (noteId) => schema.getNoteBodyText(sync.doc, noteId),
+    setEditingNote: (noteId) => awareness.setLocalStateField("editingNoteId", noteId),
     destroy: () => sync.destroy(),
   };
 }

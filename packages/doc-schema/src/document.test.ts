@@ -9,6 +9,12 @@ import { describe, expect, test } from "vitest";
 import * as Y from "yjs";
 import {
   addItem,
+  archiveNote,
+  createNote,
+  getNoteBodyText,
+  renameNote,
+  touchNote,
+  unarchiveNote,
   archiveItem,
   archiveList,
   createHouseholdDoc,
@@ -657,5 +663,133 @@ describe("20. item notes are real character-level collaborative text", () => {
     expect(note.toString()).toBe("");
     note.insert(0, "backfilled fine");
     expect(readHousehold(base).lists[0].items[0].note).toBe("backfilled fine");
+  });
+});
+
+describe("21. household notes are shared, concurrently editable free text", () => {
+  test("two peers typing in the same note converge with both edits intact", () => {
+    const base = createHouseholdDoc("Household");
+    const noteId = createNote(base, "Wifi", "alice");
+    getNoteBodyText(base, noteId).insert(0, "network: tandem\n");
+    const docA = cloneDoc(base);
+    const docB = cloneDoc(base);
+
+    // Alice appends the password while Bob prepends a warning -- the exact
+    // "we both opened the fridge note at once" case this feature exists for.
+    const noteA = getNoteBodyText(docA, noteId);
+    noteA.insert(noteA.length, "password: hunter2");
+    getNoteBodyText(docB, noteId).insert(0, "DON'T CHANGE THIS: ");
+
+    syncDocs(docA, docB);
+
+    const bodyA = getNoteBodyText(docA, noteId).toString();
+    const bodyB = getNoteBodyText(docB, noteId).toString();
+    expect(bodyA).toBe(bodyB);
+    expect(bodyA).toContain("password: hunter2");
+    expect(bodyA).toContain("DON'T CHANGE THIS: ");
+    expect(bodyA).toContain("network: tandem");
+    expect(statesConverged(docA, docB)).toBe(true);
+  });
+
+  test("concurrently created notes on two devices both survive", () => {
+    const base = createHouseholdDoc("Household");
+    const docA = cloneDoc(base);
+    const docB = cloneDoc(base);
+
+    createNote(docA, "Plumber said", "alice");
+    createNote(docB, "Birthday ideas", "bob");
+
+    syncDocs(docA, docB);
+
+    const titlesA = readHousehold(docA).notes.map((n) => n.title);
+    const titlesB = readHousehold(docB).notes.map((n) => n.title);
+    expect(titlesA.sort()).toEqual(["Birthday ideas", "Plumber said"]);
+    expect(titlesB.sort()).toEqual(["Birthday ideas", "Plumber said"]);
+    expect(statesConverged(docA, docB)).toBe(true);
+  });
+
+  test("a concurrent rename resolves to the same title on every peer", () => {
+    const base = createHouseholdDoc("Household");
+    const noteId = createNote(base, "Untitled", "alice");
+    const docA = cloneDoc(base);
+    const docB = cloneDoc(base);
+
+    renameNote(docA, noteId, "Groceries budget", "alice");
+    renameNote(docB, noteId, "Monthly budget", "bob");
+
+    syncDocs(docA, docB);
+
+    // Last-write-wins by design for a title (see NoteSnapshot) -- the
+    // requirement is that every device agrees which write won, not that
+    // both survive.
+    const titleA = readHousehold(docA).notes[0].title;
+    const titleB = readHousehold(docB).notes[0].title;
+    expect(titleA).toBe(titleB);
+    expect(["Groceries budget", "Monthly budget"]).toContain(titleA);
+    expect(statesConverged(docA, docB)).toBe(true);
+  });
+
+  test("archiving a note keeps its body, and restoring brings it back whole", () => {
+    const base = createHouseholdDoc("Household");
+    const noteId = createNote(base, "Recipe", "alice");
+    getNoteBodyText(base, noteId).insert(0, "300g flour, 2 eggs");
+
+    archiveNote(base, noteId, "bob");
+    const archived = readHousehold(base).notes[0];
+    expect(archived.archived).toBe(true);
+    expect(archived.deletedAt).not.toBeNull();
+    expect(getNoteBodyText(base, noteId).toString()).toBe("300g flour, 2 eggs");
+
+    unarchiveNote(base, noteId, "bob");
+    const restored = readHousehold(base).notes[0];
+    expect(restored.archived).toBe(false);
+    expect(restored.deletedAt).toBeNull();
+    expect(restored.preview).toBe("300g flour, 2 eggs");
+  });
+
+  test("body keystrokes alone never move updatedAt -- only touchNote does", () => {
+    const base = createHouseholdDoc("Household");
+    const noteId = createNote(base, "Wifi", "alice");
+    const createdStamp = readHousehold(base).notes[0].updatedAt;
+
+    getNoteBodyText(base, noteId).insert(0, "typed but not yet flushed");
+    expect(readHousehold(base).notes[0].updatedAt).toBe(createdStamp);
+    expect(readHousehold(base).notes[0].lastEditedBy).toBe("alice");
+
+    touchNote(base, noteId, "bob");
+    const touched = readHousehold(base).notes[0];
+    expect(touched.updatedAt).toBeGreaterThanOrEqual(createdStamp);
+    expect(touched.lastEditedBy).toBe("bob");
+  });
+
+  test("the index preview is a collapsed excerpt, never the whole body", () => {
+    const base = createHouseholdDoc("Household");
+    const noteId = createNote(base, "Long", "alice");
+    getNoteBodyText(base, noteId).insert(0, "line one\n\nline two" + "x".repeat(400));
+
+    const { preview } = readHousehold(base).notes[0];
+    expect(preview.length).toBeLessThanOrEqual(160);
+    expect(preview.startsWith("line one line two")).toBe(true);
+  });
+
+  test("notes and lists are independent subtrees -- list edits never disturb notes", () => {
+    const base = createHouseholdDoc("Household");
+    const noteId = createNote(base, "Wifi", "alice");
+    getNoteBodyText(base, noteId).insert(0, "hunter2");
+    const docA = cloneDoc(base);
+    const docB = cloneDoc(base);
+
+    const listId = createList(docA, "Groceries", "alice");
+    addItem(docA, listId, "Milk", "alice");
+    getNoteBodyText(docB, noteId).insert(0, "wifi: ");
+
+    syncDocs(docA, docB);
+
+    for (const doc of [docA, docB]) {
+      const snapshot = readHousehold(doc);
+      expect(snapshot.lists[0].items[0].text).toBe("Milk");
+      expect(snapshot.notes[0].preview).toBe("wifi: hunter2");
+    }
+    expect(statesConverged(docA, docB)).toBe(true);
   });
 });

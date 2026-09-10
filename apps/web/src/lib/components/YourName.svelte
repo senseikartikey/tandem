@@ -43,7 +43,7 @@
 			save();
 		}}
 	>
-		<span class="prompt">what should we call you?</span>
+		<span class="prompt">— what should we call you?</span>
 		<input
 			class="input"
 			type="text"
@@ -64,29 +64,44 @@
 	.your-name-edit {
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
+		gap: 0.5rem;
 		margin-bottom: 1.25rem;
 	}
 	.prompt {
-		font-weight: 700;
-		font-size: 0.9rem;
+		font-family: var(--font-mono);
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: var(--text-secondary);
 	}
+	/* Reads as a stamped identity badge rather than a text link -- it's the
+	   one place your name is set, and every other view attributes edits to
+	   it. */
 	.your-name-pill {
 		display: inline-flex;
-		background: none;
-		border: none;
-		padding: 0;
+		align-items: center;
+		gap: 0.35rem;
 		margin-bottom: 1.25rem;
-		font: inherit;
-		font-size: 0.85rem;
+		padding: 0.45rem 0.9rem;
+		background: var(--bg-surface);
+		border: var(--border-thin);
+		border-radius: var(--radius-pill);
+		box-shadow: var(--shadow-sm);
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
 		color: var(--text-secondary);
 		cursor: pointer;
+		transition:
+			transform 0.12s ease,
+			box-shadow 0.12s ease;
 	}
 	.your-name-pill:hover {
 		color: var(--text-primary);
+		transform: translate(-2px, -2px);
+		box-shadow: var(--shadow-md);
 	}
 	.your-name-pill strong {
+		font-family: var(--font-display);
+		font-weight: 400;
 		color: var(--text-primary);
-		margin: 0 0.25em;
 	}
 </style>
