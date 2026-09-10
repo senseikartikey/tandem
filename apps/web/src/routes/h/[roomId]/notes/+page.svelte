@@ -8,6 +8,8 @@
 	import { onDestroy, onMount } from "svelte";
 	import type { PageProps } from "./$types";
 	import PresenceAvatars from "$lib/components/PresenceAvatars.svelte";
+	import SyncStatus from "$lib/components/SyncStatus.svelte";
+	import type { SyncStatus as SyncStatusValue } from "$lib/sync/status-store.js";
 
 	// This route sits at /h/[roomId]/notes, alongside the /h/[roomId]/[listId]
 	// dynamic route. SvelteKit resolves the literal segment first, so a list
@@ -18,11 +20,13 @@
 	let session = $state<HouseholdSession | null>(null);
 	let household = $state<HouseholdSnapshot | null>(null);
 	let presence = $state<PresenceEntry[]>([]);
+	let syncStatus = $state<SyncStatusValue>("connecting");
 	let showArchived = $state(false);
 	let busy = $state(false);
 
 	let unsubscribe: (() => void) | null = null;
 	let unsubscribePresence: (() => void) | null = null;
+	let unsubscribeStatus: (() => void) | null = null;
 
 	onMount(async () => {
 		session = await getOrJoinSession(roomId);
@@ -32,6 +36,9 @@
 		unsubscribePresence = session.presence.subscribe((entries) => {
 			presence = entries;
 		});
+		unsubscribeStatus = session.status.subscribe((value) => {
+			syncStatus = value;
+		});
 	});
 
 	// Same cached-session contract as every other room route: the subscription
@@ -39,6 +46,7 @@
 	onDestroy(() => {
 		unsubscribe?.();
 		unsubscribePresence?.();
+		unsubscribeStatus?.();
 	});
 
 	let notes = $derived((household?.notes ?? []).filter((n) => !n.archived));
@@ -74,6 +82,7 @@
 		<header class="head">
 			<span class="eyebrow">— shared notes</span>
 			<h1>notes</h1>
+			<SyncStatus status={syncStatus} />
 		</header>
 
 		<PresenceAvatars entries={presence} />
@@ -167,7 +176,8 @@
 	.head {
 		display: flex;
 		flex-direction: column;
-		gap: 0.35rem;
+		align-items: flex-start;
+		gap: 0.5rem;
 		margin-bottom: 1.5rem;
 	}
 	h1 {

@@ -104,6 +104,69 @@
 		return () => clearInterval(interval);
 	});
 
+	// On a phone the eight feature cards stack into a deck you flick through
+	// instead of a column you scroll for half a minute. Desktop keeps the
+	// grid: there the cards are all visible at once, which is the better
+	// read when there's room for it.
+	let isNarrow = $state(false);
+	let deckIndex = $state(0);
+	let dragX = $state(0);
+	let dragging = $state(false);
+	let dragFrom = 0;
+
+	onMount(() => {
+		const query = window.matchMedia("(max-width: 700px)");
+		const sync = () => (isNarrow = query.matches);
+		sync();
+		query.addEventListener("change", sync);
+		return () => query.removeEventListener("change", sync);
+	});
+
+	function advance(step: number): void {
+		deckIndex = (deckIndex + step + features.length) % features.length;
+		dragX = 0;
+	}
+
+	// Position in the deck: 0 is the card on top, 1 and 2 peek out behind it,
+	// the rest are parked out of sight until they come round.
+	function deckPosition(index: number): number {
+		return (index - deckIndex + features.length) % features.length;
+	}
+
+	function cardStyle(index: number): string {
+		if (!isNarrow) return "";
+		const pos = deckPosition(index);
+		if (pos > 2) return "opacity:0;pointer-events:none;transform:translateY(30px) scale(0.88);";
+		const shift = pos === 0 ? dragX : 0;
+		const tilt = pos * -2.5 + shift * 0.04;
+		return [
+			`z-index:${10 - pos}`,
+			`transform:translate(${shift}px, ${pos * 14}px) rotate(${tilt}deg) scale(${1 - pos * 0.05})`,
+			`opacity:${1 - pos * 0.08}`,
+		].join(";");
+	}
+
+	function onDragStart(event: PointerEvent): void {
+		if (!isNarrow) return;
+		dragging = true;
+		dragFrom = event.clientX;
+		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+	}
+
+	function onDragMove(event: PointerEvent): void {
+		if (!dragging) return;
+		dragX = event.clientX - dragFrom;
+	}
+
+	// A flick past the threshold advances; anything shorter springs back, so
+	// a mis-swipe never silently skips a card.
+	function onDragEnd(): void {
+		if (!dragging) return;
+		dragging = false;
+		if (Math.abs(dragX) > 60) advance(dragX < 0 ? 1 : -1);
+		else dragX = 0;
+	}
+
 	// Rendered twice inside one marquee track so the -50% translate loops
 	// seamlessly (see .marquee-track in app.css).
 	const marqueePhrases = [
@@ -312,9 +375,18 @@
 			<span class="eyebrow">— why tandem</span>
 			<h2 class="section-title">the whole thing, no login.</h2>
 		</div>
-		<div class="feature-grid">
-			{#each features as feature (feature.label)}
-				<div class="feature-card" data-tone={feature.tone}>
+		<div class="feature-grid" class:deck={isNarrow}>
+			{#each features as feature, i (feature.label)}
+				<div
+					class="feature-card"
+					class:dragging={dragging && deckPosition(i) === 0}
+					data-tone={feature.tone}
+					style={cardStyle(i)}
+					onpointerdown={deckPosition(i) === 0 ? onDragStart : undefined}
+					onpointermove={deckPosition(i) === 0 ? onDragMove : undefined}
+					onpointerup={deckPosition(i) === 0 ? onDragEnd : undefined}
+					onpointercancel={deckPosition(i) === 0 ? onDragEnd : undefined}
+				>
 					<span class="feature-emoji">{feature.emoji}</span>
 					<span class="feature-label">{feature.label}</span>
 					<p>{feature.body}</p>
@@ -322,6 +394,14 @@
 				</div>
 			{/each}
 		</div>
+
+		{#if isNarrow}
+			<div class="deck-controls">
+				<button class="deck-btn" onclick={() => advance(-1)} aria-label="Previous feature">←</button>
+				<span class="deck-count">{deckIndex + 1} / {features.length}</span>
+				<button class="deck-btn" onclick={() => advance(1)} aria-label="Next feature">→</button>
+			</div>
+		{/if}
 	</section>
 
 	<section class="quote">
@@ -856,6 +936,64 @@
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
 		opacity: 0.65;
+	}
+
+	/* Deck mode: the cards leave the flow and stack in place, so the section
+	   is one card tall however many features there are. */
+	.feature-grid.deck {
+		display: block;
+		position: relative;
+		height: 22rem;
+		max-width: 420px;
+		margin-inline: auto;
+		perspective: 1000px;
+	}
+	.feature-grid.deck .feature-card {
+		position: absolute;
+		inset: 0;
+		/* Vertical panning still belongs to the page -- only horizontal drags
+		   are the deck's to handle. */
+		touch-action: pan-y;
+		transition:
+			transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+			opacity 0.28s ease;
+	}
+	/* While a finger is down the card has to track it exactly; a transition
+	   here would make the drag feel like it lags behind the thumb. */
+	.feature-grid.deck .feature-card.dragging {
+		transition: none;
+	}
+	.feature-grid.deck .feature-card:hover {
+		transform: none;
+	}
+	.deck-controls {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 1.25rem;
+		margin-top: 1.5rem;
+	}
+	.deck-btn {
+		width: 44px;
+		height: 44px;
+		border: var(--border);
+		border-radius: 50%;
+		background: var(--bg-surface);
+		box-shadow: var(--shadow-sm);
+		font-size: 1.1rem;
+		cursor: pointer;
+		transition:
+			transform 0.12s ease,
+			box-shadow 0.12s ease;
+	}
+	.deck-btn:active {
+		transform: translate(2px, 2px);
+		box-shadow: none;
+	}
+	.deck-count {
+		font-family: var(--font-mono);
+		font-size: 0.8rem;
+		color: var(--text-secondary);
 	}
 
 	/* --- Pull quote --- */

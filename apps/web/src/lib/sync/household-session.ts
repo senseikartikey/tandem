@@ -3,12 +3,16 @@ import { getDeviceLabel } from "$lib/local-households";
 import { connectHousehold } from "./provider.js";
 import { householdStore, type HouseholdStoreValue, type Readable } from "./household-store.js";
 import { presenceStore, type PresenceEntry } from "./presence-store.js";
+import { syncStatusStore, type SyncStatus } from "./status-store.js";
 import type * as Y from "yjs";
 
 export interface HouseholdSession {
   roomId: string;
   household: Readable<HouseholdStoreValue>;
   presence: Readable<PresenceEntry[]>;
+  // Whether the relay is currently attached. Never gates a read or a write
+  // -- purely so the UI can say out loud what is otherwise invisible.
+  status: Readable<SyncStatus>;
   createList(name: string): string;
   renameList(listId: string, name: string): void;
   archiveList(listId: string): void;
@@ -92,6 +96,7 @@ function wrapSession(roomId: string, sync: Awaited<ReturnType<typeof connectHous
     roomId,
     household: householdStore(sync.doc),
     presence: presenceStore(awareness),
+    status: syncStatusStore(sync.wsProvider),
     createList: (name) => schema.createList(sync.doc, name, getDeviceLabel()),
     renameList: (listId, name) => schema.renameList(sync.doc, listId, name, getDeviceLabel()),
     archiveList: (listId) => schema.archiveList(sync.doc, listId, getDeviceLabel()),

@@ -3,9 +3,8 @@
 	import { parseSpokenItems } from "$lib/voice/parse.js";
 	import { MAX_RECORDING_MS, startRecording, type Recording } from "$lib/voice/recorder.js";
 	import {
-		decodeToWhisperAudio,
-		isTranscriberReady,
 		loadTranscriber,
+		loadedTranscriber,
 		transcribe,
 		type ModelLoadProgress,
 	} from "$lib/voice/transcriber.js";
@@ -21,16 +20,24 @@
 
 	let phase = $state<Phase>("recording");
 	let errorMessage = $state("");
+	// The underlying failure, shown in small print. Speech setup fails for
+	// device-specific reasons (no GPU adapter, blocked download, unsupported
+	// audio path) that are invisible from a generic sentence, and the person
+	// hitting it is the only one who can report it.
+	let errorDetail = $state("");
 	let level = $state(0);
 	let elapsed = $state(0);
 	let transcript = $state("");
+	// What Whisper has made of the audio so far, refreshed while you talk.
+	let interim = $state("");
 	let drafts = $state<string[]>([]);
-	// null until the model actually needs downloading, so the common case
-	// (already cached) never shows a progress bar at all.
 	let downloadPercent = $state<number | null>(null);
+	let modelReadyNow = $state(loadedTranscriber() !== null);
 
 	let recording: Recording | null = null;
 	let meterFrame = 0;
+	let interimTimer: ReturnType<typeof setInterval> | null = null;
+	let interimBusy = false;
 
 	function trackProgress(progress: ModelLoadProgress): void {
 		if (progress.status === "progress" && typeof progress.progress === "number") {
@@ -43,26 +50,36 @@
 	// The model load is kicked off in parallel with the recording rather than
 	// awaited before it: on a first-ever use the weights and the sentence
 	// arrive at roughly the same time instead of one after the other.
-	const modelReady = loadTranscriber(trackProgress).catch((error: unknown) => {
-		fail(
-			error instanceof Error && /fetch|network/i.test(error.message)
-				? "the speech model needs one online download before it works offline. reconnect and try again."
-				: "couldn't start the speech model on this device.",
-		);
-		return null;
-	});
+	const modelReady = loadTranscriber(trackProgress)
+		.then((result) => {
+			modelReadyNow = true;
+			return result;
+		})
+		.catch((error: unknown) => {
+			const message = error instanceof Error ? error.message : String(error);
+			fail(
+				/fetch|network|load|404/i.test(message)
+					? "the speech model needs one online download before it works offline. reconnect and try again."
+					: "couldn't start the speech model on this device.",
+				message,
+			);
+			return null;
+		});
 
-	function fail(message: string): void {
+	function fail(message: string, detail = ""): void {
 		errorMessage = message;
+		errorDetail = detail;
 		phase = "error";
-		stopMeter();
+		stopLoops();
 		recording?.cancel();
 		recording = null;
 	}
 
-	function stopMeter(): void {
+	function stopLoops(): void {
 		if (meterFrame) cancelAnimationFrame(meterFrame);
 		meterFrame = 0;
+		if (interimTimer) clearInterval(interimTimer);
+		interimTimer = null;
 	}
 
 	function pollMeter(): void {
@@ -72,15 +89,44 @@
 		meterFrame = requestAnimationFrame(pollMeter);
 	}
 
+	// Live transcription: every couple of seconds, run the model over
+	// everything captured so far. Deliberately not overlapped -- if a pass is
+	// still running the tick is skipped rather than queued, so a slow device
+	// degrades to fewer updates instead of falling further and further behind
+	// while the queue grows.
+	const INTERIM_INTERVAL_MS = 2200;
+
+	async function runInterim(): Promise<void> {
+		if (interimBusy || !recording || phase !== "recording") return;
+		if (loadedTranscriber() === null) return; // still downloading
+		interimBusy = true;
+		try {
+			const audio = await recording.takeAudio();
+			// Under ~0.6s there isn't enough signal for a useful guess, and
+			// Whisper tends to hallucinate on very short clips.
+			if (audio.length > 9600) {
+				const text = await transcribe(audio);
+				if (phase === "recording") interim = text;
+			}
+		} catch {
+			// A failed interim pass is not worth surfacing: the final pass on
+			// stop is the one that matters, and it reports its own errors.
+		} finally {
+			interimBusy = false;
+		}
+	}
+
 	async function begin(): Promise<void> {
 		try {
 			recording = await startRecording(() => void finish());
 			pollMeter();
+			interimTimer = setInterval(() => void runInterim(), INTERIM_INTERVAL_MS);
 		} catch (error) {
 			fail(
 				error instanceof Error && error.name === "NotAllowedError"
 					? "microphone permission was denied. allow it to talk your list in, or just type the item."
 					: "couldn't reach a microphone on this device.",
+				error instanceof Error ? error.message : String(error),
 			);
 		}
 	}
@@ -88,17 +134,24 @@
 	async function finish(): Promise<void> {
 		if (!recording || phase !== "recording") return;
 		phase = "thinking";
-		stopMeter();
-		const blob = await recording.stop();
+		stopLoops();
+		const audio = await recording.stop();
 		recording = null;
 		try {
 			if (!(await modelReady)) return; // fail() already reported why
-			const audio = await decodeToWhisperAudio(blob);
-			transcript = await transcribe(audio);
+			const text = await transcribe(audio);
+			// Falling back to the last live guess matters on slow devices: the
+			// final pass can come back empty if the person stopped talking a
+			// while before hitting done, and throwing away a transcript we
+			// already showed them would look like the app lost it.
+			transcript = text || interim;
 			drafts = parseSpokenItems(transcript);
 			phase = "review";
-		} catch {
-			fail("couldn't make out any speech in that. try again, a little closer to the mic.");
+		} catch (error) {
+			fail(
+				"couldn't make out any speech in that. try again, a little closer to the mic.",
+				error instanceof Error ? error.message : String(error),
+			);
 		}
 	}
 
@@ -123,7 +176,7 @@
 	void begin();
 
 	onDestroy(() => {
-		stopMeter();
+		stopLoops();
 		recording?.cancel();
 	});
 
@@ -142,22 +195,26 @@
 				<span class="mic-ring" style={`transform: scale(${1 + level * 0.5})`}></span>
 				<span class="mic-glyph">🎙️</span>
 			</button>
-			<p class="voice-hint">
-				listening — “milk, eggs and a loaf of sourdough”
-				<span class="voice-countdown">{secondsLeft}s left</span>
+
+			<!-- Reserved height, so the panel doesn't jump the moment the first
+			     words come back from the model. -->
+			<p class="live-transcript" class:waiting={!interim} aria-live="polite">
+				{interim || (modelReadyNow ? "listening — “milk, eggs and a loaf of sourdough”" : "")}
 			</p>
+
+			<p class="voice-hint"><span class="voice-countdown">{secondsLeft}s left</span></p>
 			<button class="btn btn-ink btn-block" onclick={() => void finish()}>done talking</button>
 			{#if downloadPercent !== null}
 				<p class="voice-note">
 					first run: fetching the speech model, {downloadPercent}% — after this it works offline.
 				</p>
-			{:else if !isTranscriberReady()}
+			{:else if !modelReadyNow}
 				<p class="voice-note">warming up the speech model…</p>
 			{/if}
 		{:else if phase === "thinking"}
 			<p class="voice-hint">working out what you said…</p>
-			{#if downloadPercent !== null}
-				<p class="voice-note">still fetching the speech model, {downloadPercent}%.</p>
+			{#if interim}
+				<p class="live-transcript">{interim}</p>
 			{/if}
 		{:else if phase === "review"}
 			{#if drafts.length === 0}
@@ -196,6 +253,9 @@
 			{/if}
 		{:else}
 			<p class="voice-error">{errorMessage}</p>
+			{#if errorDetail}
+				<p class="voice-detail">{errorDetail}</p>
+			{/if}
 			<button class="btn btn-block" onclick={onClose}>close</button>
 		{/if}
 	</div>
@@ -238,7 +298,7 @@
 		align-self: center;
 		width: 96px;
 		height: 96px;
-		margin: 0.5rem 0;
+		margin: 0.25rem 0;
 		border: var(--border);
 		border-radius: 50%;
 		background: var(--color-primary);
@@ -259,6 +319,22 @@
 		font-size: 2.25rem;
 		line-height: 1;
 	}
+	/* The live transcript is the point of the screen once words start
+	   arriving, so it's set as real copy rather than as a status line. */
+	.live-transcript {
+		min-height: 3.2rem;
+		margin: 0;
+		text-align: center;
+		font-size: 1rem;
+		line-height: 1.4;
+		color: var(--text-primary);
+		text-wrap: pretty;
+	}
+	.live-transcript.waiting {
+		font-family: var(--font-mono);
+		font-size: 0.8rem;
+		color: var(--text-secondary);
+	}
 	.voice-hint {
 		text-align: center;
 		font-family: var(--font-mono);
@@ -266,8 +342,6 @@
 		color: var(--text-secondary);
 	}
 	.voice-countdown {
-		display: block;
-		margin-top: 0.25rem;
 		opacity: 0.7;
 	}
 	.voice-note {
@@ -281,6 +355,13 @@
 		font-family: var(--font-mono);
 		font-size: 0.8rem;
 		color: var(--text-primary);
+	}
+	.voice-detail {
+		text-align: center;
+		font-family: var(--font-mono);
+		font-size: 0.66rem;
+		color: var(--text-secondary);
+		word-break: break-word;
 	}
 	.drafts {
 		list-style: none;

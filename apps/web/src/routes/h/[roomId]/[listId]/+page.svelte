@@ -11,9 +11,11 @@
 	import type { PageProps } from "./$types";
 	import ActivityPanel from "./ActivityPanel.svelte";
 	import PresenceAvatars from "$lib/components/PresenceAvatars.svelte";
+	import SyncStatus from "$lib/components/SyncStatus.svelte";
+	import type { SyncStatus as SyncStatusValue } from "$lib/sync/status-store.js";
 	import { bindYText } from "$lib/actions/bind-y-text";
 	import { lookupProductByBarcode } from "$lib/product-lookup";
-	import { supportsVoiceCapture } from "$lib/voice/transcriber.js";
+	import { supportsVoiceCapture } from "$lib/voice/recorder.js";
 
 	// See h/[roomId]/+page.svelte's comment on why the typed PageProps params
 	// are used here instead of $app/state's broadly-typed page.params.
@@ -33,6 +35,7 @@
 	let household = $state<HouseholdSnapshot | null>(null);
 	let activity = $state<ActivitySnapshot[]>([]);
 	let presence = $state<PresenceEntry[]>([]);
+	let syncStatus = $state<SyncStatusValue>("connecting");
 	let newItemText = $state("");
 	let showScanner = $state(false);
 	let showVoice = $state(false);
@@ -60,6 +63,7 @@
 
 	let unsubscribe: (() => void) | null = null;
 	let unsubscribePresence: (() => void) | null = null;
+	let unsubscribeStatus: (() => void) | null = null;
 
 	let list = $derived<ListSnapshot | null>(
 		household?.lists.find((l) => l.id === listId) ?? null,
@@ -154,6 +158,9 @@
 		unsubscribePresence = session.presence.subscribe((entries) => {
 			presence = entries;
 		});
+		unsubscribeStatus = session.status.subscribe((value) => {
+			syncStatus = value;
+		});
 	});
 
 	// See the household page's onDestroy comment -- the session is cached
@@ -161,6 +168,7 @@
 	onDestroy(() => {
 		unsubscribe?.();
 		unsubscribePresence?.();
+		unsubscribeStatus?.();
 	});
 
 	// One spoken sentence becomes several ordinary addItem calls, so voice
@@ -251,6 +259,7 @@
 		<header class="head">
 			<span class="eyebrow">— list</span>
 			<h1>{list.name}</h1>
+			<SyncStatus status={syncStatus} />
 		</header>
 
 		{#if forkSourceName}
@@ -440,7 +449,8 @@
 	.head {
 		display: flex;
 		flex-direction: column;
-		gap: 0.35rem;
+		align-items: flex-start;
+		gap: 0.5rem;
 		margin-bottom: 1.25rem;
 	}
 	h1 {

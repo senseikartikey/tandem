@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from "vitest";
 import { parseSpokenItems } from "./parse.js";
+import { cleanTranscript } from "./transcriber.js";
 
 describe("splitting", () => {
 	test("splits a spoken list on commas and a trailing 'and'", () => {
@@ -89,5 +90,20 @@ describe("robustness", () => {
 	test("a long sentence with no separators stays one item rather than being dropped", () => {
 		const sentence = "the big blue bottle of olive oil from the shop near the station";
 		expect(parseSpokenItems(sentence)).toEqual([sentence]);
+	});
+});
+
+describe("whisper artifacts", () => {
+	test("bracketed and parenthesised event tags are dropped", () => {
+		expect(cleanTranscript("[BLANK_AUDIO] milk (coughs) and eggs")).toBe("milk and eggs");
+	});
+
+	test("the subtitle boilerplate whisper hallucinates on silence is dropped", () => {
+		expect(cleanTranscript("Thanks for watching!")).toBe("");
+		expect(cleanTranscript("milk. Please subscribe")).toBe("milk.");
+	});
+
+	test("ordinary speech is untouched apart from whitespace", () => {
+		expect(cleanTranscript("  two  litres of milk ")).toBe("two litres of milk");
 	});
 });

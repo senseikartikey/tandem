@@ -12,6 +12,8 @@
 	import type { PageProps } from "./$types";
 	import YourName from "$lib/components/YourName.svelte";
 	import PresenceAvatars from "$lib/components/PresenceAvatars.svelte";
+	import SyncStatus from "$lib/components/SyncStatus.svelte";
+	import type { SyncStatus as SyncStatusValue } from "$lib/sync/status-store.js";
 
 	// $app/state's `page.params` is typed broadly across every route (so
 	// individual keys come back as `string | undefined`); this route's
@@ -22,6 +24,7 @@
 	let household = $state<HouseholdSnapshot | null>(null);
 	let activity = $state<ActivitySnapshot[]>([]);
 	let presence = $state<PresenceEntry[]>([]);
+	let syncStatus = $state<SyncStatusValue>("connecting");
 	let newListName = $state("");
 	let showInvite = $state(false);
 	let showRemovedLists = $state(false);
@@ -33,6 +36,7 @@
 
 	let unsubscribe: (() => void) | null = null;
 	let unsubscribePresence: (() => void) | null = null;
+	let unsubscribeStatus: (() => void) | null = null;
 
 	onMount(async () => {
 		const newName = page.url.searchParams.get("new");
@@ -57,6 +61,9 @@
 		unsubscribePresence = session.presence.subscribe((entries) => {
 			presence = entries;
 		});
+		unsubscribeStatus = session.status.subscribe((value) => {
+			syncStatus = value;
+		});
 	});
 
 	// Intentionally does NOT destroy the session -- it's cached and shared
@@ -66,6 +73,7 @@
 	onDestroy(() => {
 		unsubscribe?.();
 		unsubscribePresence?.();
+		unsubscribeStatus?.();
 	});
 
 	function addList(): void {
@@ -129,6 +137,7 @@
 		<header class="head">
 			<span class="eyebrow">— household</span>
 			<h1>{household.name}</h1>
+			<SyncStatus status={syncStatus} />
 		</header>
 
 		{#if mergedCount !== null}
@@ -280,7 +289,8 @@
 	.head {
 		display: flex;
 		flex-direction: column;
-		gap: 0.35rem;
+		align-items: flex-start;
+		gap: 0.5rem;
 		margin-bottom: 1.5rem;
 	}
 	h1 {

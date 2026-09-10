@@ -34,6 +34,18 @@ export async function connectHousehold(roomId: string): Promise<HouseholdSync> {
     void navigator.storage.persist();
   }
 
+  // The public relay runs on a free tier that sleeps after ~15 minutes idle
+  // and needs the better part of a minute to wake. A websocket handshake
+  // against a sleeping instance just fails, and y-websocket then backs off
+  // exponentially -- so the first person to open the app after a quiet spell
+  // could sit there for minutes with no live sync and no idea why. A plain
+  // GET wakes the host immediately and is retried by nobody: fire it, ignore
+  // the result, let the socket retry land on an awake server.
+  void fetch(`${SYNC_SERVER_URL.replace(/^ws/, "http").trim()}/healthz`, {
+    mode: "no-cors",
+    cache: "no-store",
+  }).catch(() => {});
+
   // Background reconciliation only -- reconnects and replays opportunistically.
   // Never on the critical path for a read or a write.
   const wsProvider = new WebsocketProvider(SYNC_SERVER_URL, roomId, doc);

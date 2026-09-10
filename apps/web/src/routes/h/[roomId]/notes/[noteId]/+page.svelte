@@ -9,6 +9,8 @@
 	import { onDestroy, onMount } from "svelte";
 	import type * as Y from "yjs";
 	import type { PageProps } from "./$types";
+	import SyncStatus from "$lib/components/SyncStatus.svelte";
+	import type { SyncStatus as SyncStatusValue } from "$lib/sync/status-store.js";
 
 	// $derived, not const, for the same reason the list route documents:
 	// SvelteKit reuses this component instance when navigating between two
@@ -21,12 +23,14 @@
 	let session = $state<HouseholdSession | null>(null);
 	let household = $state<HouseholdSnapshot | null>(null);
 	let presence = $state<PresenceEntry[]>([]);
+	let syncStatus = $state<SyncStatusValue>("connecting");
 	let body = $state<Y.Text | null>(null);
 	let titleDraft = $state("");
 	let titleFocused = $state(false);
 
 	let unsubscribe: (() => void) | null = null;
 	let unsubscribePresence: (() => void) | null = null;
+	let unsubscribeStatus: (() => void) | null = null;
 	let touchTimer: ReturnType<typeof setTimeout> | null = null;
 	let touchPending = false;
 
@@ -43,6 +47,9 @@
 		});
 		unsubscribePresence = session.presence.subscribe((entries) => {
 			presence = entries;
+		});
+		unsubscribeStatus = session.status.subscribe((value) => {
+			syncStatus = value;
 		});
 	});
 
@@ -117,6 +124,7 @@
 		session?.setEditingNote(null);
 		unsubscribe?.();
 		unsubscribePresence?.();
+		unsubscribeStatus?.();
 	});
 </script>
 
@@ -139,6 +147,7 @@
 		/>
 
 		<div class="note-meta">
+			<SyncStatus status={syncStatus} />
 			<span>edited by {note.lastEditedBy} · {relativeTime(note.updatedAt)}</span>
 			{#if alsoHere.length > 0}
 				<span class="live">
@@ -228,7 +237,8 @@
 	.note-meta {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.75rem;
+		align-items: center;
+		gap: 0.6rem;
 		font-family: var(--font-mono);
 		font-size: 0.72rem;
 		color: var(--text-secondary);
