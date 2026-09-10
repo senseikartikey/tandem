@@ -8,13 +8,30 @@ const DATABASE_URL = process.env.DATABASE_URL ?? "file:./data/tandem.sqlite";
 const DATABASE_AUTH_TOKEN = process.env.DATABASE_AUTH_TOKEN;
 const MAX_ROOM_BYTES = Number(process.env.MAX_ROOM_BYTES ?? 5 * 1024 * 1024);
 
+// Web push needs a VAPID keypair, which identifies this server to the
+// browsers' push services. Generate one with:
+//   npx web-push generate-vapid-keys
+// and set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY. Without them the server runs
+// exactly as before and reminders still sync between devices -- they just
+// don't ring a phone that has the app closed.
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? "mailto:reminders@tandem.local";
+
 const server = await createTandemServer({
   port: PORT,
   dbUrl: DATABASE_URL,
   dbAuthToken: DATABASE_AUTH_TOKEN,
   maxRoomBytes: MAX_ROOM_BYTES,
+  push:
+    VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY
+      ? { publicKey: VAPID_PUBLIC_KEY, privateKey: VAPID_PRIVATE_KEY, subject: VAPID_SUBJECT }
+      : null,
 });
 console.log(`tandem sync server listening on :${server.port}`);
+if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+  console.log("push disabled (no VAPID keys) -- reminders will still sync between open devices");
+}
 
 function shutdown(): void {
   console.log("shutting down, flushing pending writes...");

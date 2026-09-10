@@ -1,12 +1,15 @@
 import { createServer, type Server } from "node:http";
 import { WebSocketServer } from "ws";
 import { handleHttpRequest } from "./http.js";
+import { createPushService, type PushConfig, type PushService } from "./push.js";
 import { openRoomStore, type RoomStore } from "./persistence.js";
 import { RoomRegistry } from "./rooms.js";
 import { handleSignalingConnection } from "./signaling.js";
 import { handleConnection } from "./ws-handler.js";
 
 export interface TandemServerOptions {
+  /** VAPID credentials. Omit to run with reminders but no push delivery. */
+  push?: PushConfig | null;
   port: number;
   // libSQL URL -- "file:..." for local/self-hosted, "libsql://..." for a
   // hosted Turso database. See persistence.ts for why.
@@ -29,8 +32,17 @@ export async function createTandemServer(options: TandemServerOptions): Promise<
   const registry = new RoomRegistry(store);
   const maxRoomBytes = options.maxRoomBytes ?? 5 * 1024 * 1024;
 
+  // Optional by design: with no VAPID keys the server still does everything
+  // else, and reminders still arrive through document sync. Push is the
+  // doorbell, not the message.
+  const push = await createPushService({
+    dbUrl: options.dbUrl,
+    dbAuthToken: options.dbAuthToken,
+    config: options.push ?? null,
+  });
+
   const httpServer = createServer((req, res) => {
-    handleHttpRequest(req, res).catch((err) => {
+    handleHttpRequest(req, res, { push }).catch((err) => {
       console.error("HTTP request error:", err);
       res.writeHead(500).end();
     });
@@ -86,6 +98,7 @@ export async function createTandemServer(options: TandemServerOptions): Promise<
           // Order matters: flush every room's pending write before closing
           // the DB client, then stop accepting new connections.
           await registry.shutdown();
+          await push.stop();
           await store.close();
           wss.close();
           signalingWss.close();

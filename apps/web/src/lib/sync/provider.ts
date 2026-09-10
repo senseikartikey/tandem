@@ -16,6 +16,10 @@ const SYNC_SERVER_URL = import.meta.env.VITE_SYNC_SERVER_URL ?? "ws://localhost:
 // VITE_SYNC_SERVER_URL points, /signaling is already there too.
 const SIGNALING_URL = `${SYNC_SERVER_URL}/signaling`;
 
+// Long enough that a slow-but-working store still loads before the first
+// render, short enough that a broken one doesn't strand the app.
+const LOCAL_STORE_TIMEOUT_MS = 3_000;
+
 export async function connectHousehold(roomId: string): Promise<HouseholdSync> {
   const doc = new Y.Doc();
 
@@ -24,7 +28,19 @@ export async function connectHousehold(roomId: string): Promise<HouseholdSync> {
   // before the network provider even attempts to connect, and every mutation
   // made from here on is written straight to it regardless of network state.
   const indexeddbProvider = new IndexeddbPersistence(roomId, doc);
-  await indexeddbProvider.whenSynced;
+  // Waited for, but never indefinitely. IndexedDB is unavailable or silently
+  // stalls in more situations than it looks: private windows in some
+  // browsers, storage disabled by policy, a corrupted profile, an iOS
+  // "clear website data" mid-session. Blocking the app's boot on a promise
+  // that may never settle turns any of those into a permanent "loading…"
+  // screen -- which is a far worse failure than starting without local
+  // persistence, since the document still works in memory and still syncs
+  // over the network. If the store does come back, y-indexeddb catches up on
+  // its own; nothing here needs to know.
+  await Promise.race([
+    indexeddbProvider.whenSynced,
+    new Promise((resolve) => setTimeout(resolve, LOCAL_STORE_TIMEOUT_MS)),
+  ]);
 
   // An evicted IndexedDB store would silently defeat the entire offline-
   // first design -- ask the browser to exempt this origin from storage

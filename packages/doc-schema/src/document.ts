@@ -17,6 +17,7 @@ const LISTS_KEY = "lists";
 const ITEMS_KEY = "items";
 const ACTIVITY_KEY = "activity";
 const NOTES_KEY = "notes";
+const REMINDERS_KEY = "reminders";
 
 // A note index shows a title and the first line or two, never the whole
 // body -- see readNote for why the full text deliberately isn't in the
@@ -92,12 +93,45 @@ export interface NoteSnapshot {
   lastEditedBy: string;
 }
 
+// A nudge about one item, aimed at one housemate or at everyone. Kept in the
+// document rather than only sent as a push, for three reasons: it survives
+// the recipient's phone being off, it is attributable like every other
+// change here, and acknowledging it converges -- two people can't both be
+// nagged about the milk after one of them has said they got it.
+//
+// The push notification (see apps/server) is a *delivery* mechanism layered
+// on top of this record, not the record itself. If push fails, is denied, or
+// the platform doesn't support it, the reminder still arrives the moment the
+// other device opens the app.
+export interface ReminderSnapshot {
+  id: string;
+  listId: string;
+  itemId: string;
+  // Text snapshotted at send time, so the reminder still reads correctly if
+  // the item is renamed or removed afterwards -- same reasoning as the
+  // activity log's snapshotted fields.
+  itemText: string;
+  listName: string;
+  message: string;
+  fromLabel: string;
+  // null means "everyone except the sender". Device labels are the only
+  // identity this app has; they're self-chosen and not unique, which is why
+  // delivery treats a match as "anyone calling themselves that".
+  toLabel: string | null;
+  // When it should fire. Equal to createdAt for an immediate nudge.
+  dueAt: number;
+  createdAt: number;
+  doneAt: number | null;
+  doneBy: string | null;
+}
+
 export interface HouseholdSnapshot {
   id: string;
   name: string;
   createdAt: number;
   lists: ListSnapshot[];
   notes: NoteSnapshot[];
+  reminders: ReminderSnapshot[];
 }
 
 export type ActivityType =
@@ -151,6 +185,7 @@ export function initializeHouseholdMeta(doc: Y.Doc, name: string): void {
   doc.getMap(LISTS_KEY);
   doc.getMap(ACTIVITY_KEY);
   doc.getMap(NOTES_KEY);
+  doc.getMap(REMINDERS_KEY);
 }
 
 function getListsMap(doc: Y.Doc): Y.Map<YRecord> {
@@ -181,6 +216,16 @@ function getNoteRecord(doc: Y.Doc, noteId: string): YRecord {
   const note = getNotesMap(doc).get(noteId);
   if (!note) throw new Error(`Note ${noteId} not found`);
   return note;
+}
+
+function getRemindersMap(doc: Y.Doc): Y.Map<YRecord> {
+  return doc.getMap(REMINDERS_KEY) as Y.Map<YRecord>;
+}
+
+function getReminderRecord(doc: Y.Doc, reminderId: string): YRecord {
+  const reminder = getRemindersMap(doc).get(reminderId);
+  if (!reminder) throw new Error(`Reminder ${reminderId} not found`);
+  return reminder;
 }
 
 function getActivityMap(doc: Y.Doc): Y.Map<YRecord> {
@@ -722,6 +767,60 @@ export function reorderNote(
   });
 }
 
+// --- Reminders ---
+
+export interface ReminderInput {
+  listId: string;
+  itemId: string;
+  message?: string;
+  toLabel?: string | null;
+  /** Omit or pass null for "now". */
+  dueAt?: number | null;
+}
+
+export function createReminder(doc: Y.Doc, input: ReminderInput, fromLabel: string): string {
+  const item = getItemRecord(doc, input.listId, input.itemId);
+  const listName = getListRecord(doc, input.listId).get("name") as string;
+  const id = uuidv4();
+  const now = Date.now();
+  doc.transact(() => {
+    const reminder: Y.Map<unknown> = new Y.Map();
+    reminder.set("id", id);
+    reminder.set("listId", input.listId);
+    reminder.set("itemId", input.itemId);
+    reminder.set("itemText", item.get("text") as string);
+    reminder.set("listName", listName);
+    reminder.set("message", input.message?.trim() ?? "");
+    reminder.set("fromLabel", fromLabel);
+    reminder.set("toLabel", input.toLabel ?? null);
+    reminder.set("dueAt", input.dueAt ?? now);
+    reminder.set("createdAt", now);
+    reminder.set("doneAt", null);
+    reminder.set("doneBy", null);
+    getRemindersMap(doc).set(id, reminder);
+  });
+  return id;
+}
+
+// Acknowledging is last-write-wins on purpose: if two people mark the same
+// nudge done at once, they agree on one of them, and either answer is
+// correct -- the point is that it stops nagging everybody.
+export function completeReminder(doc: Y.Doc, reminderId: string, actorLabel: string): void {
+  const reminder = getReminderRecord(doc, reminderId);
+  doc.transact(() => {
+    reminder.set("doneAt", Date.now());
+    reminder.set("doneBy", actorLabel);
+  });
+}
+
+/** Whether a device calling itself `label` should be nagged by this reminder. */
+export function reminderTargets(reminder: ReminderSnapshot, label: string): boolean {
+  if (reminder.doneAt !== null) return false;
+  // Never nag the sender with their own reminder: they just set it.
+  if (reminder.toLabel === null) return reminder.fromLabel !== label;
+  return reminder.toLabel === label;
+}
+
 // --- Reads ---
 
 function readItem(record: YRecord): ItemSnapshot {
@@ -779,6 +878,23 @@ function readNote(record: YRecord): NoteSnapshot {
   };
 }
 
+function readReminder(record: YRecord): ReminderSnapshot {
+  return {
+    id: record.get("id") as string,
+    listId: record.get("listId") as string,
+    itemId: record.get("itemId") as string,
+    itemText: record.get("itemText") as string,
+    listName: record.get("listName") as string,
+    message: (record.get("message") as string | undefined) ?? "",
+    fromLabel: record.get("fromLabel") as string,
+    toLabel: (record.get("toLabel") as string | null) ?? null,
+    dueAt: record.get("dueAt") as number,
+    createdAt: record.get("createdAt") as number,
+    doneAt: (record.get("doneAt") as number | null) ?? null,
+    doneBy: (record.get("doneBy") as string | null) ?? null,
+  };
+}
+
 function readActivityRecord(record: YRecord): ActivitySnapshot {
   return {
     id: record.get("id") as string,
@@ -802,6 +918,11 @@ export function readHousehold(doc: Y.Doc): HouseholdSnapshot {
     createdAt: meta.get("createdAt") as number,
     lists: sortedByOrder(listsMap).map(readList),
     notes: sortedByOrder(getNotesMap(doc)).map(readNote),
+    // Soonest-due first: a reminders list is read as "what am I being asked
+    // to do", which is an ordering by time, not by insertion.
+    reminders: Array.from(getRemindersMap(doc).values())
+      .map(readReminder)
+      .sort((a, b) => a.dueAt - b.dueAt),
   };
 }
 

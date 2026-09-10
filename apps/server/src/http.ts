@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { v4 as uuidv4 } from "uuid";
+import type { PushService } from "./push.js";
 
 // Short, human-shareable codes for verbal/typed sharing. Unlike the invite
 // link's UUID+key (a long-lived capability token), a 6-char code is not
@@ -60,7 +61,17 @@ function isRateLimited(ip: string): boolean {
   return attempts.length > RATE_LIMIT_MAX;
 }
 
-export async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+export interface HttpContext {
+  // Absent when the server runs without VAPID keys: the reminder endpoints
+  // then answer honestly rather than pretending to have delivered anything.
+  push?: PushService;
+}
+
+export async function handleHttpRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  context: HttpContext = {},
+): Promise<void> {
   if (req.method === "OPTIONS") {
     // Preflight for the POST endpoints (their JSON Content-Type triggers
     // one). Same wildcard-is-deliberate reasoning as json()'s CORS header.
@@ -130,5 +141,114 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
     return;
   }
 
+  // --- Push, for reminders ---------------------------------------------
+  //
+  // These endpoints only ring a doorbell. The reminder itself lives in the
+  // household document and reaches the other device through ordinary sync
+  // whether or not any of this works, so every failure path here is a
+  // degradation, never a lost reminder.
+
+  if (req.method === "GET" && url.pathname === "/api/push/key") {
+    const push = context.push;
+    json(res, 200, {
+      configured: push?.configured ?? false,
+      publicKey: push?.publicKey ?? "",
+    });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/push/subscribe") {
+    const push = context.push;
+    if (!push?.configured) {
+      json(res, 503, { error: "push is not configured on this server" });
+      return;
+    }
+    let payload: { roomId?: string; label?: string; subscription?: PushSubscriptionBody };
+    try {
+      payload = JSON.parse(await readBody(req));
+    } catch {
+      json(res, 400, { error: "invalid request body" });
+      return;
+    }
+    const { roomId, label, subscription } = payload;
+    if (!roomId || !label || !subscription?.endpoint || !subscription.keys?.p256dh) {
+      json(res, 400, { error: "roomId, label and subscription are required" });
+      return;
+    }
+    await push.subscribe(roomId, label, subscription);
+    json(res, 201, { ok: true });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/push/unsubscribe") {
+    const push = context.push;
+    let endpoint: string | undefined;
+    try {
+      endpoint = (JSON.parse(await readBody(req)) as { endpoint?: string }).endpoint;
+    } catch {
+      json(res, 400, { error: "invalid request body" });
+      return;
+    }
+    if (!endpoint) {
+      json(res, 400, { error: "endpoint is required" });
+      return;
+    }
+    await push?.unsubscribe(endpoint);
+    json(res, 200, { ok: true });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/push/remind") {
+    const push = context.push;
+    if (!push?.configured) {
+      // 202, not an error: the caller has already written the reminder to
+      // the document, which is the part that matters. This response only
+      // says "no doorbell available".
+      json(res, 202, { delivered: false, reason: "push not configured" });
+      return;
+    }
+    let payload: RemindBody;
+    try {
+      payload = JSON.parse(await readBody(req)) as RemindBody;
+    } catch {
+      json(res, 400, { error: "invalid request body" });
+      return;
+    }
+    if (!payload.roomId || !payload.title || !payload.body) {
+      json(res, 400, { error: "roomId, title and body are required" });
+      return;
+    }
+    const result = await push.send({
+      roomId: payload.roomId,
+      toLabel: payload.toLabel ?? null,
+      fromLabel: payload.fromLabel ?? "someone",
+      title: payload.title,
+      body: payload.body,
+      url: payload.url ?? "/",
+      tag: payload.tag ?? payload.roomId,
+      fromEndpoint: payload.fromEndpoint ?? null,
+      sendAt: payload.sendAt ?? null,
+    });
+    json(res, 200, { delivered: true, ...result });
+    return;
+  }
+
   json(res, 404, { error: "not found" });
+}
+
+interface PushSubscriptionBody {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+
+interface RemindBody {
+  roomId?: string;
+  toLabel?: string | null;
+  fromLabel?: string;
+  title?: string;
+  body?: string;
+  url?: string;
+  tag?: string;
+  fromEndpoint?: string | null;
+  sendAt?: number | null;
 }

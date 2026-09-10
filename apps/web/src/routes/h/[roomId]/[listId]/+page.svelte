@@ -12,6 +12,10 @@
 	import ActivityPanel from "./ActivityPanel.svelte";
 	import PresenceAvatars from "$lib/components/PresenceAvatars.svelte";
 	import SyncStatus from "$lib/components/SyncStatus.svelte";
+	import ReminderSheet from "$lib/components/ReminderSheet.svelte";
+	import ReminderInbox from "$lib/components/ReminderInbox.svelte";
+	import { sendReminderPush } from "$lib/push.js";
+	import { getDeviceLabel } from "$lib/local-households";
 	import type { SyncStatus as SyncStatusValue } from "$lib/sync/status-store.js";
 	import { bindYText } from "$lib/actions/bind-y-text";
 	import { lookupProductByBarcode } from "$lib/product-lookup";
@@ -46,6 +50,7 @@
 	let editingItemId = $state<string | null>(null);
 	let editingText = $state("");
 	let showActivity = $state(false);
+	let remindingItem = $state<{ id: string; text: string } | null>(null);
 
 	// Only one note editor is ever open at a time -- getItemNoteText() is
 	// called fresh on expand, not eagerly for every item, since it's a live
@@ -66,6 +71,56 @@
 	let unsubscribe: (() => void) | null = null;
 	let unsubscribePresence: (() => void) | null = null;
 	let unsubscribeStatus: (() => void) | null = null;
+
+	let myLabel = $derived(getDeviceLabel());
+
+	// Everyone this household has seen, by the name they chose. Presence
+	// covers who is here now; the activity log covers everyone who has ever
+	// done anything, which is what you want when nudging someone whose phone
+	// is in their pocket.
+	let people = $derived(
+		[
+			...new Set([
+				...presence.map((entry) => entry.name),
+				...activity.map((entry) => entry.actorLabel),
+				...(household?.reminders ?? []).flatMap((r) => [r.fromLabel, r.toLabel ?? ""]),
+			]),
+		]
+			.filter((name) => name && name !== myLabel)
+			.sort(),
+	);
+
+	async function sendReminder(choice: {
+		toLabel: string | null;
+		dueAt: number | null;
+		message: string;
+	}): Promise<void> {
+		const target = remindingItem;
+		remindingItem = null;
+		if (!session || !target) return;
+
+		// The document write is the reminder. It happens first and always --
+		// the push below is a doorbell that may or may not ring, and nothing
+		// waits on it.
+		session.createReminder({
+			listId,
+			itemId: target.id,
+			toLabel: choice.toLabel,
+			dueAt: choice.dueAt,
+			message: choice.message,
+		});
+
+		void sendReminderPush({
+			roomId,
+			toLabel: choice.toLabel,
+			fromLabel: myLabel,
+			itemText: target.text,
+			message: choice.message,
+			listUrl: `/h/${roomId}/${listId}`,
+			tag: `${listId}:${target.id}`,
+			sendAt: choice.dueAt,
+		});
+	}
 
 	let list = $derived<ListSnapshot | null>(
 		household?.lists.find((l) => l.id === listId) ?? null,
@@ -287,6 +342,12 @@
 
 		<PresenceAvatars entries={presence} />
 
+		<ReminderInbox
+			reminders={household?.reminders ?? []}
+			{myLabel}
+			onDone={(id) => session?.completeReminder(id)}
+		/>
+
 		<form
 			class="add-item"
 			onsubmit={(e) => {
@@ -383,6 +444,14 @@
 							</div>
 						{/if}
 						<button
+							class="remind-toggle"
+							onclick={() => (remindingItem = { id: item.id, text: item.text })}
+							aria-label={`Remind someone about ${item.text}`}
+							title="remind someone"
+						>
+							🔔
+						</button>
+						<button
 							class="note-toggle"
 							class:has-note={item.note.length > 0}
 							onclick={() => toggleNote(item.id)}
@@ -408,6 +477,16 @@
 
 		{#if dndItems.length === 0}
 			<p class="empty">nothing here yet.</p>
+		{/if}
+
+		{#if remindingItem}
+			<ReminderSheet
+				itemText={remindingItem.text}
+				{people}
+				{roomId}
+				onSend={(choice) => void sendReminder(choice)}
+				onClose={() => (remindingItem = null)}
+			/>
 		{/if}
 
 		<div class="list-actions">
@@ -630,6 +709,19 @@
 	}
 	.remove:hover {
 		color: var(--color-primary);
+	}
+	.remind-toggle {
+		flex-shrink: 0;
+		background: none;
+		border: none;
+		padding: 0.25rem;
+		cursor: pointer;
+		opacity: 0.35;
+		font-size: 0.95rem;
+		line-height: 1;
+	}
+	.remind-toggle:hover {
+		opacity: 1;
 	}
 	.note-toggle {
 		flex-shrink: 0;

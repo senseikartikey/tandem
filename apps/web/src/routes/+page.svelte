@@ -226,7 +226,7 @@
 			label: "shop together",
 			body: "see who else has the list open right now, and watch their check-offs flash in as they happen.",
 			tag: "live presence",
-			tone: "coral",
+			tone: "paper",
 		},
 		{
 			emoji: "🏷️",
@@ -255,6 +255,13 @@
 			body: "say “milk, eggs and sourdough” and it becomes three items, transcribed as you speak. tandem never hears the audio — it uses your device's own dictation, or a local model offline.",
 			tag: "words in, items out",
 			tone: "teal",
+		},
+		{
+			emoji: "🔔",
+			label: "nudge someone",
+			body: "ask a housemate for something on the list — now, or at a time you pick. it reaches their phone even with the app closed, and stops nagging once anyone says they got it.",
+			tag: "one tap, one notification",
+			tone: "coral",
 		},
 		{
 			emoji: "📝",
@@ -380,6 +387,8 @@
 				<div
 					class="feature-card"
 					class:dragging={dragging && deckPosition(i) === 0}
+					role="group"
+					aria-label={feature.label}
 					data-tone={feature.tone}
 					style={cardStyle(i)}
 					onpointerdown={deckPosition(i) === 0 ? onDragStart : undefined}

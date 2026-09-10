@@ -10,7 +10,10 @@ import * as Y from "yjs";
 import {
   addItem,
   archiveNote,
+  completeReminder,
   createNote,
+  createReminder,
+  reminderTargets,
   getNoteBodyText,
   renameNote,
   touchNote,
@@ -790,6 +793,119 @@ describe("21. household notes are shared, concurrently editable free text", () =
       expect(snapshot.lists[0].items[0].text).toBe("Milk");
       expect(snapshot.notes[0].preview).toBe("wifi: hunter2");
     }
+    expect(statesConverged(docA, docB)).toBe(true);
+  });
+});
+
+describe("22. reminders are shared, convergent nudges about an item", () => {
+  test("a reminder reaches the other device with the item snapshotted", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    const docA = cloneDoc(base);
+    const docB = cloneDoc(base);
+
+    createReminder(docA, { listId, itemId, toLabel: "bob", message: "before 6" }, "alice");
+    syncDocs(docA, docB);
+
+    const reminder = readHousehold(docB).reminders[0];
+    expect(reminder).toMatchObject({
+      itemText: "Milk",
+      listName: "Groceries",
+      fromLabel: "alice",
+      toLabel: "bob",
+      message: "before 6",
+      doneAt: null,
+    });
+  });
+
+  test("the snapshot survives the item being renamed or removed afterwards", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    createReminder(base, { listId, itemId }, "alice");
+
+    setItemText(base, listId, itemId, "Oat milk", "bob");
+    archiveItem(base, listId, itemId, "bob");
+
+    expect(readHousehold(base).reminders[0].itemText).toBe("Milk");
+  });
+
+  test("acknowledging converges -- nobody is nagged twice for one item", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    const reminderId = createReminder(base, { listId, itemId }, "alice");
+    const docA = cloneDoc(base);
+    const docB = cloneDoc(base);
+
+    completeReminder(docA, reminderId, "bob");
+    completeReminder(docB, reminderId, "carol");
+
+    syncDocs(docA, docB);
+
+    const a = readHousehold(docA).reminders[0];
+    const b = readHousehold(docB).reminders[0];
+    expect(a.doneAt).toBe(b.doneAt);
+    expect(a.doneBy).toBe(b.doneBy);
+    expect(["bob", "carol"]).toContain(a.doneBy);
+    expect(statesConverged(docA, docB)).toBe(true);
+  });
+
+  test("targeting: a named reminder nags only that label, an open one nags everyone but the sender", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    createReminder(base, { listId, itemId, toLabel: "bob" }, "alice");
+    createReminder(base, { listId, itemId, toLabel: null }, "alice");
+
+    const [named, open] = readHousehold(base).reminders;
+    expect(reminderTargets(named, "bob")).toBe(true);
+    expect(reminderTargets(named, "carol")).toBe(false);
+    expect(reminderTargets(named, "alice")).toBe(false);
+
+    expect(reminderTargets(open, "bob")).toBe(true);
+    expect(reminderTargets(open, "carol")).toBe(true);
+    // The sender already knows; nagging them with their own reminder is noise.
+    expect(reminderTargets(open, "alice")).toBe(false);
+  });
+
+  test("a completed reminder stops targeting anyone", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    const reminderId = createReminder(base, { listId, itemId, toLabel: "bob" }, "alice");
+
+    expect(reminderTargets(readHousehold(base).reminders[0], "bob")).toBe(true);
+    completeReminder(base, reminderId, "bob");
+    expect(reminderTargets(readHousehold(base).reminders[0], "bob")).toBe(false);
+  });
+
+  test("reminders come back soonest-due first", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    const later = Date.now() + 3_600_000;
+    const sooner = Date.now() + 60_000;
+    createReminder(base, { listId, itemId, dueAt: later, message: "later" }, "alice");
+    createReminder(base, { listId, itemId, dueAt: sooner, message: "sooner" }, "alice");
+
+    expect(readHousehold(base).reminders.map((r) => r.message)).toEqual(["sooner", "later"]);
+  });
+
+  test("two devices creating reminders concurrently keep both", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    const docA = cloneDoc(base);
+    const docB = cloneDoc(base);
+
+    createReminder(docA, { listId, itemId, message: "from a" }, "alice");
+    createReminder(docB, { listId, itemId, message: "from b" }, "bob");
+
+    syncDocs(docA, docB);
+
+    expect(readHousehold(docA).reminders).toHaveLength(2);
     expect(statesConverged(docA, docB)).toBe(true);
   });
 });

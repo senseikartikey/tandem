@@ -10,6 +10,13 @@
 	import type * as Y from "yjs";
 	import type { PageProps } from "./$types";
 	import SyncStatus from "$lib/components/SyncStatus.svelte";
+	import {
+		continueList,
+		toggleCheckbox,
+		toggleList,
+		type LineEdit,
+		type ListKind,
+	} from "$lib/list-markup.js";
 	import type { SyncStatus as SyncStatusValue } from "$lib/sync/status-store.js";
 
 	// $derived, not const, for the same reason the list route documents:
@@ -113,6 +120,68 @@
 		session?.touchNote(noteId);
 	}
 
+	// --- list markup -----------------------------------------------------
+	//
+	// Edits are written by replacing the textarea's value and dispatching an
+	// input event, which is exactly what typing does -- so the Y.Text binding
+	// diffs it into minimal character ops and the change merges with whatever
+	// the other person is typing at the same moment. Rewriting the shared
+	// text directly would be a bigger, blunter operation with no such
+	// guarantee.
+	let bodyEl = $state<HTMLTextAreaElement | undefined>();
+
+	function applyEdit(edit: LineEdit): void {
+		if (!bodyEl) return;
+		bodyEl.value = edit.text;
+		bodyEl.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+		bodyEl.dispatchEvent(new Event("input", { bubbles: true }));
+		bodyEl.focus();
+		noteTyped();
+	}
+
+	function applyList(kind: ListKind): void {
+		if (!bodyEl) return;
+		applyEdit(toggleList(bodyEl.value, bodyEl.selectionStart, bodyEl.selectionEnd, kind));
+	}
+
+	function onBodyKeydown(event: KeyboardEvent): void {
+		if (!bodyEl) return;
+
+		// Return continues the list you're in, and ends it on an empty item.
+		if (event.key === "Enter" && !event.shiftKey && bodyEl.selectionStart === bodyEl.selectionEnd) {
+			const edit = continueList(bodyEl.value, bodyEl.selectionStart);
+			// null means this isn't a list line -- let the browser insert an
+			// ordinary newline, which keeps native undo intact.
+			if (edit) {
+				event.preventDefault();
+				applyEdit(edit);
+			}
+			return;
+		}
+
+		// Cmd/Ctrl+Enter ticks the checkbox on the current line, for people
+		// who'd rather not reach for the mouse.
+		if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+			const edit = toggleCheckbox(bodyEl.value, bodyEl.selectionStart);
+			if (edit) {
+				event.preventDefault();
+				applyEdit(edit);
+			}
+		}
+	}
+
+	// Tapping the box itself ticks it, the way it works in a notes app. Only
+	// a tap that lands on the marker counts, so putting the caret in the text
+	// of a task doesn't toggle it by accident.
+	function onBodyClick(): void {
+		if (!bodyEl || bodyEl.selectionStart !== bodyEl.selectionEnd) return;
+		const caret = bodyEl.selectionStart;
+		const lineStart = bodyEl.value.lastIndexOf("\n", Math.max(0, caret - 1)) + 1;
+		if (caret - lineStart > 2) return;
+		const edit = toggleCheckbox(bodyEl.value, caret);
+		if (edit) applyEdit(edit);
+	}
+
 	async function removeNote(): Promise<void> {
 		if (!session) return;
 		session.archiveNote(noteId);
@@ -160,13 +229,22 @@
 			{/if}
 		</div>
 
+		<div class="list-tools">
+			<button class="tool" onclick={() => applyList("bullet")} title="Bullet list">• list</button>
+			<button class="tool" onclick={() => applyList("number")} title="Numbered list">1. list</button>
+			<button class="tool" onclick={() => applyList("checkbox")} title="Checklist">☐ tasks</button>
+		</div>
+
 		<!-- The one control that matters: bound straight to the note's live
 		     Y.Text, so two people typing in the same paragraph merge
 		     character by character instead of one overwriting the other. -->
 		<textarea
 			class="note-body"
+			bind:this={bodyEl}
 			use:bindYText={body}
 			oninput={noteTyped}
+			onkeydown={onBodyKeydown}
+			onclick={onBodyClick}
 			placeholder="start typing — everyone in the household sees it as you go"
 			aria-label="Note body"
 		></textarea>
@@ -265,6 +343,30 @@
 		50% {
 			opacity: 0.35;
 		}
+	}
+	/* Sits directly on top of the text area it acts on, so the connection
+	   between button and effect is obvious without a label saying so. */
+	.list-tools {
+		display: flex;
+		gap: 0.4rem;
+	}
+	.tool {
+		padding: 0.4rem 0.8rem;
+		border: var(--border-thin);
+		border-radius: var(--radius-pill);
+		background: var(--bg-surface);
+		box-shadow: var(--shadow-sm);
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: var(--text-primary);
+		cursor: pointer;
+		transition:
+			transform 0.1s ease,
+			box-shadow 0.1s ease;
+	}
+	.tool:active {
+		transform: translate(2px, 2px);
+		box-shadow: none;
 	}
 	.note-body {
 		width: 100%;

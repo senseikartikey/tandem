@@ -76,6 +76,66 @@ async function networkFirst(request: Request): Promise<Response> {
 	}
 }
 
+// --- Reminders ---------------------------------------------------------
+//
+// A push only rings the doorbell. The reminder itself is already in the
+// household document and will be there when the app opens, so nothing here
+// needs to write state -- it just has to be loud enough to be noticed and
+// take you to the right list when tapped.
+
+interface ReminderPayload {
+	title?: string;
+	body?: string;
+	url?: string;
+	tag?: string;
+}
+
+self.addEventListener("push", (event) => {
+	const payload: ReminderPayload = (() => {
+		try {
+			return (event.data?.json() as ReminderPayload) ?? {};
+		} catch {
+			return { body: event.data?.text() };
+		}
+	})();
+
+	event.waitUntil(
+		self.registration.showNotification(payload.title ?? "tandem", {
+			body: payload.body ?? "",
+			icon: "/icons/icon-192.png",
+			badge: "/icons/icon-192.png",
+			// Same tag for repeat nudges about one item, so a forgetful
+			// housemate replaces the previous notification instead of stacking
+			// five of them.
+			tag: payload.tag ?? "tandem-reminder",
+			renotify: true,
+			data: { url: payload.url ?? "/" },
+		} as NotificationOptions),
+	);
+});
+
+self.addEventListener("notificationclick", (event) => {
+	event.notification.close();
+	const target = (event.notification.data as { url?: string } | undefined)?.url ?? "/";
+
+	event.waitUntil(
+		(async () => {
+			const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+			// Prefer focusing a tab that already has the app open -- opening a
+			// second window onto a local-first app means a second copy of the
+			// document loading for no reason.
+			for (const client of clients) {
+				if ("focus" in client) {
+					await client.focus();
+					if ("navigate" in client) await client.navigate(target).catch(() => {});
+					return;
+				}
+			}
+			await self.clients.openWindow(target);
+		})(),
+	);
+});
+
 self.addEventListener("fetch", (event) => {
 	if (event.request.method !== "GET") return;
 

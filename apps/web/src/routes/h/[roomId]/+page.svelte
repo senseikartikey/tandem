@@ -13,6 +13,8 @@
 	import YourName from "$lib/components/YourName.svelte";
 	import PresenceAvatars from "$lib/components/PresenceAvatars.svelte";
 	import SyncStatus from "$lib/components/SyncStatus.svelte";
+	import ReminderInbox from "$lib/components/ReminderInbox.svelte";
+	import { getDeviceLabel } from "$lib/local-households";
 	import type { SyncStatus as SyncStatusValue } from "$lib/sync/status-store.js";
 
 	// $app/state's `page.params` is typed broadly across every route (so
@@ -152,6 +154,14 @@
 		{/if}
 
 		<PresenceAvatars entries={presence} />
+
+		<!-- Reminders for you across every list in the household -- the list
+		     view only shows its own. -->
+		<ReminderInbox
+			reminders={household.reminders}
+			myLabel={getDeviceLabel()}
+			onDone={(id) => session?.completeReminder(id)}
+		/>
 
 		<YourName />
 

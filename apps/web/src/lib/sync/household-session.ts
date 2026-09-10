@@ -47,6 +47,12 @@ export interface HouseholdSession {
   // leaving, so a closed editor stops claiming a seat immediately rather
   // than waiting out the awareness timeout.
   setEditingNote(noteId: string | null): void;
+  // Reminders are ordinary document records, so they sync, are attributed,
+  // and converge on being acknowledged like anything else here. Ringing the
+  // other person's phone is a separate, best-effort step on top (see
+  // $lib/push) -- never a precondition for the reminder existing.
+  createReminder(input: schema.ReminderInput): string;
+  completeReminder(reminderId: string): void;
   destroy(): void;
 }
 
@@ -139,6 +145,9 @@ function wrapSession(roomId: string, sync: Awaited<ReturnType<typeof connectHous
     touchNote: (noteId) => schema.touchNote(sync.doc, noteId, getDeviceLabel()),
     getNoteBodyText: (noteId) => schema.getNoteBodyText(sync.doc, noteId),
     setEditingNote: (noteId) => awareness.setLocalStateField("editingNoteId", noteId),
+    createReminder: (input) => schema.createReminder(sync.doc, input, getDeviceLabel()),
+    completeReminder: (reminderId) =>
+      schema.completeReminder(sync.doc, reminderId, getDeviceLabel()),
     destroy: () => sync.destroy(),
   };
 }

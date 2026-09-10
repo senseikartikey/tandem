@@ -1,5 +1,7 @@
 const SYNC_SERVER_URL = import.meta.env.VITE_SYNC_SERVER_URL ?? "ws://localhost:1234";
-const HTTP_BASE = SYNC_SERVER_URL.replace(/^ws/, "http");
+// Exported so the push client (which talks to the same server over plain
+// HTTP) doesn't re-derive it and drift.
+export const HTTP_BASE = SYNC_SERVER_URL.replace(/^ws/, "http").trim();
 
 export async function createRoom(): Promise<{ roomId: string }> {
   const res = await fetch(`${HTTP_BASE}/api/rooms`, { method: "POST" });

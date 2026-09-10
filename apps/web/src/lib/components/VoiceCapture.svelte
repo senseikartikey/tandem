@@ -230,7 +230,9 @@
 		onClose();
 	}
 
-	if (engine === "browser") beginBrowser();
+	// Reads the capability directly rather than the state variable, which only
+	// changes later if the browser engine turns out to need a network.
+	if (browserSpeechAvailable()) beginBrowser();
 	else void beginWhisper();
 
 	onDestroy(() => {
