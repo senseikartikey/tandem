@@ -14,7 +14,9 @@
 	import PresenceAvatars from "$lib/components/PresenceAvatars.svelte";
 	import SyncStatus from "$lib/components/SyncStatus.svelte";
 	import ReminderInbox from "$lib/components/ReminderInbox.svelte";
+	import NotificationSetting from "$lib/components/NotificationSetting.svelte";
 	import { getDeviceLabel } from "$lib/local-households";
+	import { refreshPushSubscription } from "$lib/push.js";
 	import type { SyncStatus as SyncStatusValue } from "$lib/sync/status-store.js";
 
 	// $app/state's `page.params` is typed broadly across every route (so
@@ -39,6 +41,14 @@
 	let unsubscribe: (() => void) | null = null;
 	let unsubscribePresence: (() => void) | null = null;
 	let unsubscribeStatus: (() => void) | null = null;
+
+	onMount(() => {
+		// A subscription is stored under the label the device had when it
+		// registered. Renaming yourself afterwards would quietly make every
+		// reminder addressed to your new name undeliverable, so the server's
+		// copy is brought up to date whenever the household is opened.
+		void refreshPushSubscription(roomId, getDeviceLabel());
+	});
 
 	onMount(async () => {
 		const newName = page.url.searchParams.get("new");
@@ -164,6 +174,8 @@
 		/>
 
 		<YourName />
+
+		<NotificationSetting {roomId} />
 
 		<span class="eyebrow lists-label">— your lists</span>
 

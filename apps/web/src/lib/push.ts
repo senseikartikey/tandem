@@ -14,6 +14,7 @@ export type PushState =
 	| "unsupported" // no Push API here at all
 	| "needs-install" // iOS: only works once added to the Home Screen
 	| "blocked" // permission denied
+	| "server-off" // this device is willing; the server has no VAPID keys
 	| "off" // supported, not yet enabled
 	| "on";
 
@@ -83,7 +84,10 @@ export async function enablePush(roomId: string, label: string): Promise<PushSta
 			configured: boolean;
 			publicKey: string;
 		};
-		if (!configured || !publicKey) return "off";
+		// Distinguished from "off" deliberately: tapping enable, granting
+		// permission, and then silently staying off is the kind of dead end
+		// that makes people conclude the feature is broken.
+		if (!configured || !publicKey) return "server-off";
 
 		const registration = await navigator.serviceWorker.ready;
 		// An existing subscription is reused rather than replaced: re-subscribing
@@ -105,6 +109,60 @@ export async function enablePush(roomId: string, label: string): Promise<PushSta
 	} catch (error) {
 		console.warn("[tandem] could not enable push", error);
 		return "off";
+	}
+}
+
+/**
+ * Re-registers an existing subscription against the current room and device
+ * label.
+ *
+ * Necessary because a subscription is stored under the label the device had
+ * when it subscribed: rename yourself in YourName afterwards and a reminder
+ * addressed to the new name would be delivered to nobody, while the app
+ * cheerfully showed it as sent. Cheap enough to run on every household open.
+ */
+export async function refreshPushSubscription(roomId: string, label: string): Promise<void> {
+	if (pushState() !== "on") return;
+	try {
+		const registration = await navigator.serviceWorker.ready;
+		const subscription = await registration.pushManager.getSubscription();
+		if (!subscription) {
+			// The browser dropped it (cleared site data, permission reset).
+			// Forgetting locally too keeps the UI honest about being off.
+			localStorage.removeItem(ENDPOINT_KEY);
+			return;
+		}
+		localStorage.setItem(ENDPOINT_KEY, subscription.endpoint);
+		await fetch(`${HTTP_BASE}/api/push/subscribe`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ roomId, label, subscription: subscription.toJSON() }),
+		});
+	} catch (error) {
+		console.warn("[tandem] could not refresh push subscription", error);
+	}
+}
+
+/**
+ * Asks the server to push to this very device.
+ *
+ * The only way to answer "is this actually working?" -- an undelivered
+ * reminder looks the same whether the subscription is dead, the platform
+ * dropped it, or nobody sent one.
+ */
+export async function sendTestPush(): Promise<boolean> {
+	const endpoint = pushEndpoint();
+	if (!endpoint) return false;
+	try {
+		const response = await fetch(`${HTTP_BASE}/api/push/test`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ endpoint }),
+		});
+		const result = (await response.json()) as { sent?: boolean };
+		return result.sent === true;
+	} catch {
+		return false;
 	}
 }
 

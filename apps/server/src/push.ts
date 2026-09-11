@@ -55,6 +55,8 @@ export interface PushService {
   subscribe(roomId: string, label: string, subscription: PushSubscription): Promise<void>;
   unsubscribe(endpoint: string): Promise<void>;
   send(reminder: ReminderPush): Promise<{ queued: boolean; sent: number }>;
+  /** Pushes to one known endpoint, so a device can prove its own setup works. */
+  sendTest(endpoint: string): Promise<boolean>;
   /** Sends anything whose time has come. Safe to call on any schedule. */
   flushDue(now?: number): Promise<number>;
   /** Stops the scheduler and releases the database handle. */
@@ -265,6 +267,35 @@ export async function createPushService(options: PushServiceOptions): Promise<Pu
         return { queued: true, sent: 0 };
       }
       return { queued: false, sent: await deliver(reminder) };
+    },
+
+    async sendTest(endpoint): Promise<boolean> {
+      if (!config) return false;
+      const result = await client.execute({
+        sql: `SELECT p256dh, auth FROM push_subscriptions WHERE endpoint = ?`,
+        args: [endpoint],
+      });
+      const row = result.rows[0];
+      if (!row) return false;
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint,
+            keys: { p256dh: row.p256dh as string, auth: row.auth as string },
+          },
+          JSON.stringify({
+            title: "tandem reminders are on",
+            body: "this is what a nudge from your household looks like",
+            url: "/",
+            tag: "tandem-test",
+          }),
+          { TTL: 60 },
+        );
+        return true;
+      } catch (error) {
+        console.error("test push failed:", (error as { statusCode?: number }).statusCode ?? error);
+        return false;
+      }
     },
 
     flushDue,

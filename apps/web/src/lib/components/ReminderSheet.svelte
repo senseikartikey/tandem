@@ -139,6 +139,11 @@
 			<button class="push-row" onclick={() => void turnOnPush()} disabled={enabling}>
 				🔔 {enabling ? "asking…" : "also get reminders on this device"}
 			</button>
+		{:else if push === "server-off"}
+			<p class="note">
+				the server can't send notifications yet, so this reminder will reach them when they
+				next open tandem.
+			</p>
 		{:else if push === "needs-install"}
 			<p class="note">
 				on iPhone, notifications only work once tandem is added to the home screen (share →
