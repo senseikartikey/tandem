@@ -16,7 +16,12 @@ const MAX_ROOM_BYTES = Number(process.env.MAX_ROOM_BYTES ?? 5 * 1024 * 1024);
 // don't ring a phone that has the app closed.
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? "mailto:reminders@tandem.local";
+// Must be a routable mailto: or https: URL. Apple's push service is the
+// strict one here -- it rejects the JWT outright (BadJwtToken) for a subject
+// pointing at a domain that cannot exist, which a placeholder like
+// "mailto:...@tandem.local" does, and the rejection only shows up at send
+// time as a failed delivery with no clue attached.
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? "https://tandem-lists.vercel.app";
 
 const server = await createTandemServer({
   port: PORT,

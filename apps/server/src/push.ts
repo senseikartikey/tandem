@@ -55,8 +55,11 @@ export interface PushService {
   subscribe(roomId: string, label: string, subscription: PushSubscription): Promise<void>;
   unsubscribe(endpoint: string): Promise<void>;
   send(reminder: ReminderPush): Promise<{ queued: boolean; sent: number }>;
-  /** Pushes to one known endpoint, so a device can prove its own setup works. */
-  sendTest(endpoint: string): Promise<boolean>;
+  /**
+   * Pushes to one known endpoint, so a device can prove its own setup works.
+   * Reports why it failed -- "it didn't arrive" is otherwise unactionable.
+   */
+  sendTest(endpoint: string): Promise<{ sent: boolean; reason?: string }>;
   /** Sends anything whose time has come. Safe to call on any schedule. */
   flushDue(now?: number): Promise<number>;
   /** Stops the scheduler and releases the database handle. */
@@ -269,14 +272,16 @@ export async function createPushService(options: PushServiceOptions): Promise<Pu
       return { queued: false, sent: await deliver(reminder) };
     },
 
-    async sendTest(endpoint): Promise<boolean> {
-      if (!config) return false;
+    async sendTest(endpoint): Promise<{ sent: boolean; reason?: string }> {
+      if (!config) return { sent: false, reason: "server has no VAPID keys" };
       const result = await client.execute({
         sql: `SELECT p256dh, auth FROM push_subscriptions WHERE endpoint = ?`,
         args: [endpoint],
       });
       const row = result.rows[0];
-      if (!row) return false;
+      if (!row) {
+        return { sent: false, reason: "this device is not registered on the server" };
+      }
       try {
         await webpush.sendNotification(
           {
@@ -291,10 +296,18 @@ export async function createPushService(options: PushServiceOptions): Promise<Pu
           }),
           { TTL: 60 },
         );
-        return true;
+        return { sent: true };
       } catch (error) {
-        console.error("test push failed:", (error as { statusCode?: number }).statusCode ?? error);
-        return false;
+        const status = (error as { statusCode?: number }).statusCode;
+        const body = (error as { body?: string }).body;
+        console.error("test push failed:", status, body);
+        // The push service's own words, trimmed: they name the actual
+        // problem (an expired subscription, a rejected VAPID JWT) far better
+        // than anything this code could infer.
+        return {
+          sent: false,
+          reason: `${status ?? "send failed"}${body ? `: ${String(body).slice(0, 120)}` : ""}`,
+        };
       }
     },
 

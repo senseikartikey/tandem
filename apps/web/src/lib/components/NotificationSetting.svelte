@@ -12,6 +12,9 @@
 	let status = $state<PushState>(pushState());
 	let busy = $state(false);
 	let tested = $state<"idle" | "sent" | "failed">("idle");
+	// Kept verbatim from the push service where possible: "410 gone" or a
+	// rejected VAPID token are actionable, "it didn't work" is not.
+	let failure = $state("");
 
 	async function turnOn(): Promise<void> {
 		busy = true;
@@ -25,8 +28,9 @@
 
 	async function test(): Promise<void> {
 		tested = "idle";
-		const sent = await sendTestPush();
-		tested = sent ? "sent" : "failed";
+		const result = await sendTestPush();
+		tested = result.sent ? "sent" : "failed";
+		failure = result.reason ?? "";
 	}
 </script>
 
@@ -40,8 +44,8 @@
 				{#if tested === "sent"}
 					test sent — it should appear even with tandem closed.
 				{:else if tested === "failed"}
-					couldn't deliver a test to this device. try turning it off and on in your browser's
-					site settings.
+					couldn't deliver a test to this device{failure ? ` — ${failure}` : ""}. reminders
+					still reach you inside the app.
 				{:else}
 					this device is nudged when someone reminds you.
 				{/if}

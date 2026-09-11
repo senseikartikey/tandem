@@ -99,11 +99,15 @@ export async function enablePush(roomId: string, label: string): Promise<PushSta
 				applicationServerKey: decodeKey(publicKey),
 			}));
 
-		await fetch(`${HTTP_BASE}/api/push/subscribe`, {
+		const stored = await fetch(`${HTTP_BASE}/api/push/subscribe`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ roomId, label, subscription: subscription.toJSON() }),
 		});
+		// Checked, not assumed: a browser-side subscription the server never
+		// recorded is the exact shape of "notifications are on" that silently
+		// never rings.
+		if (!stored.ok) return "server-off";
 		localStorage.setItem(ENDPOINT_KEY, subscription.endpoint);
 		return "on";
 	} catch (error) {
@@ -150,19 +154,18 @@ export async function refreshPushSubscription(roomId: string, label: string): Pr
  * reminder looks the same whether the subscription is dead, the platform
  * dropped it, or nobody sent one.
  */
-export async function sendTestPush(): Promise<boolean> {
+export async function sendTestPush(): Promise<{ sent: boolean; reason?: string }> {
 	const endpoint = pushEndpoint();
-	if (!endpoint) return false;
+	if (!endpoint) return { sent: false, reason: "this device has no subscription" };
 	try {
 		const response = await fetch(`${HTTP_BASE}/api/push/test`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ endpoint }),
 		});
-		const result = (await response.json()) as { sent?: boolean };
-		return result.sent === true;
-	} catch {
-		return false;
+		return (await response.json()) as { sent: boolean; reason?: string };
+	} catch (error) {
+		return { sent: false, reason: error instanceof Error ? error.message : "network error" };
 	}
 }
 

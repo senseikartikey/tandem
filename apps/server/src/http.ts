@@ -218,8 +218,8 @@ export async function handleHttpRequest(
       json(res, 400, { error: "endpoint is required" });
       return;
     }
-    const sent = await push.sendTest(endpoint);
-    json(res, sent ? 200 : 404, { sent });
+    const result = await push.sendTest(endpoint);
+    json(res, result.sent ? 200 : 502, result);
     return;
   }
 
