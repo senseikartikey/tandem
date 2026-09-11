@@ -55,6 +55,15 @@ export function loadedTranscriber(): LoadedTranscriber | null {
 	return loaded;
 }
 
+// Both bundled models are the .en variants: the multilingual ones are several
+// times the download for accuracy this task doesn't need in English, and the
+// browser's own recognizer already covers other languages far better than a
+// tiny local model would. So a non-English household needs the browser
+// engine, and the UI says so rather than transcribing Gujarati as nonsense.
+export function localModelSupports(languageTag: string): boolean {
+	return languageTag.toLowerCase().startsWith("en");
+}
+
 // Choosing a backend is mostly a matter of knowing where WebGPU is a trap.
 //
 // `"gpu" in navigator` is not enough on its own: Android Chrome exposes

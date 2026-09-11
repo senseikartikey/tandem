@@ -30,6 +30,8 @@ import {
   renameList,
   reorderItem,
   setItemChecked,
+  setItemPhoto,
+  MAX_ITEM_PHOTO_BYTES,
   setItemText,
   unarchiveItem,
   unarchiveList,
@@ -906,6 +908,80 @@ describe("22. reminders are shared, convergent nudges about an item", () => {
     syncDocs(docA, docB);
 
     expect(readHousehold(docA).reminders).toHaveLength(2);
+    expect(statesConverged(docA, docB)).toBe(true);
+  });
+});
+
+describe("23. item photos", () => {
+  const tinyPhoto = "data:image/jpeg;base64,AAAA";
+
+  test("a photo syncs to the other device and comes back on the snapshot", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    const docA = cloneDoc(base);
+    const docB = cloneDoc(base);
+
+    setItemPhoto(docA, listId, itemId, tinyPhoto, "alice");
+    syncDocs(docA, docB);
+
+    expect(readHousehold(docB).lists[0].items[0].photo).toBe(tinyPhoto);
+    expect(statesConverged(docA, docB)).toBe(true);
+  });
+
+  test("an item with no photo reads as an empty string, not undefined", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    addItem(base, listId, "Milk", "alice");
+    expect(readHousehold(base).lists[0].items[0].photo).toBe("");
+  });
+
+  test("clearing a photo is just setting it back to empty", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    setItemPhoto(base, listId, itemId, tinyPhoto, "alice");
+    setItemPhoto(base, listId, itemId, "", "bob");
+    expect(readHousehold(base).lists[0].items[0].photo).toBe("");
+  });
+
+  test("a fork copies the photo as its own snapshot", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    setItemPhoto(base, listId, itemId, tinyPhoto, "alice");
+
+    const forkId = forkList(base, listId, "Party", "bob");
+    setItemPhoto(base, listId, itemId, "", "alice");
+
+    const fork = readHousehold(base).lists.find((l) => l.id === forkId)!;
+    expect(fork.items[0].photo).toBe(tinyPhoto);
+    expect(readHousehold(base).lists.find((l) => l.id === listId)!.items[0].photo).toBe("");
+  });
+
+  test("an oversized photo is refused rather than silently bloating the room", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    const huge = "x".repeat(MAX_ITEM_PHOTO_BYTES + 1);
+    expect(() => setItemPhoto(base, listId, itemId, huge, "alice")).toThrow(/downscale/);
+    expect(readHousehold(base).lists[0].items[0].photo).toBe("");
+  });
+
+  test("two devices attaching different photos at once converge on one", () => {
+    const base = createHouseholdDoc("Household");
+    const listId = createList(base, "Groceries", "alice");
+    const itemId = addItem(base, listId, "Milk", "alice");
+    const docA = cloneDoc(base);
+    const docB = cloneDoc(base);
+
+    setItemPhoto(docA, listId, itemId, "data:image/jpeg;base64,AAA", "alice");
+    setItemPhoto(docB, listId, itemId, "data:image/jpeg;base64,BBB", "bob");
+
+    syncDocs(docA, docB);
+
+    const a = readHousehold(docA).lists[0].items[0].photo;
+    expect(a).toBe(readHousehold(docB).lists[0].items[0].photo);
     expect(statesConverged(docA, docB)).toBe(true);
   });
 });

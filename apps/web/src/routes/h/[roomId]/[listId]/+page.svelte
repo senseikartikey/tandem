@@ -16,6 +16,10 @@
 	import ReminderInbox from "$lib/components/ReminderInbox.svelte";
 	import { sendReminderPush } from "$lib/push.js";
 	import { getDeviceLabel } from "$lib/local-households";
+	import { checkFeedback, setSoundEnabled, soundEnabled } from "$lib/feedback.js";
+	import { toItemPhoto } from "$lib/photo.js";
+	import { usualItems } from "$lib/usual.js";
+	import { renderListImage, shareListImage } from "$lib/list-image.js";
 	import type { SyncStatus as SyncStatusValue } from "$lib/sync/status-store.js";
 	import { bindYText } from "$lib/actions/bind-y-text";
 	import { lookupProductByBarcode } from "$lib/product-lookup";
@@ -51,6 +55,13 @@
 	let editingText = $state("");
 	let showActivity = $state(false);
 	let remindingItem = $state<{ id: string; text: string } | null>(null);
+	let viewingPhoto = $state<{ id: string; text: string; photo: string } | null>(null);
+	let photoTarget = $state<string | null>(null);
+	let photoError = $state("");
+	let photoInput = $state<HTMLInputElement | undefined>();
+	let showUsual = $state(false);
+	let sound = $state(soundEnabled());
+	let shareState = $state<"idle" | "working" | "done" | "failed">("idle");
 
 	// Only one note editor is ever open at a time -- getItemNoteText() is
 	// called fresh on expand, not eagerly for every item, since it's a live
@@ -154,6 +165,10 @@
 			lastSeenTouch.set(entry.clientId, ts);
 			if (Date.now() - ts > 5000) continue; // stale signal from a peer who joined late
 			flashes = { ...flashes, [itemId]: entry.color };
+			// A softer, quieter blip for someone else's change -- it's news,
+			// not a response to something you did, and it's how you notice a
+			// housemate grabbing something two aisles away.
+			checkFeedback("remote");
 			setTimeout(() => {
 				const { [itemId]: _removed, ...rest } = flashes;
 				flashes = rest;
@@ -245,6 +260,83 @@
 		for (const text of texts) session?.addItem(listId, text);
 	}
 
+	// Photos go through the same "capture never writes on its own" shape as
+	// everything else here: the file is downscaled first, and only a
+	// successfully shrunk image is ever written to the document.
+	function pickPhoto(itemId: string): void {
+		photoError = "";
+		photoTarget = itemId;
+		photoInput?.click();
+	}
+
+	async function onPhotoChosen(event: Event): Promise<void> {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		const itemId = photoTarget;
+		input.value = ""; // so choosing the same file twice still fires
+		photoTarget = null;
+		if (!file || !itemId || !session) return;
+		try {
+			session.setItemPhoto(listId, itemId, await toItemPhoto(file));
+		} catch (error) {
+			photoError = error instanceof Error ? error.message : "couldn't attach that photo";
+		}
+	}
+
+	function removePhoto(itemId: string): void {
+		session?.setItemPhoto(listId, itemId, "");
+		viewingPhoto = null;
+	}
+
+	// --- the usual ---------------------------------------------------------
+	//
+	// Built from this household's own activity log, on device. Suggestions are
+	// chips you tap, never an automatic add, so a wrong guess costs nothing.
+	let suggestions = $derived(
+		usualItems(
+			activity,
+			// Live items only. An archived one is precisely what you might want
+			// suggested back: removing something is how it leaves the list, not
+			// how it stops being part of the household's habits.
+			(list?.items ?? []).filter((item) => !item.archived).map((item) => item.text),
+		),
+	);
+
+	function addSuggestion(text: string): void {
+		session?.addItem(listId, text);
+	}
+
+	function addAllSuggestions(): void {
+		for (const suggestion of suggestions) session?.addItem(listId, suggestion.text);
+		showUsual = false;
+	}
+
+	// --- share as an image -------------------------------------------------
+	async function shareAsImage(): Promise<void> {
+		if (!list || shareState === "working") return;
+		shareState = "working";
+		try {
+			const blob = await renderListImage({
+				householdName: household?.name ?? "household",
+				listName: list.name,
+				items: list.items
+					.filter((item) => !item.archived)
+					.map((item) => ({ text: item.text, checked: item.checked })),
+			});
+			const outcome = await shareListImage(blob, list.name);
+			shareState = outcome === "failed" ? "failed" : "done";
+		} catch {
+			shareState = "failed";
+		}
+		setTimeout(() => (shareState = "idle"), 2500);
+	}
+
+	function toggleSound(): void {
+		sound = !sound;
+		setSoundEnabled(sound);
+		if (sound) checkFeedback("check");
+	}
+
 	function addItem(): void {
 		const text = newItemText.trim();
 		if (!text || !session) return;
@@ -274,6 +366,12 @@
 
 	function toggle(itemId: string, checked: boolean): void {
 		session?.setItemChecked(listId, itemId, !checked);
+		// The confirmation you can feel without looking at the screen, which is
+		// how this actually gets used: one hand, in an aisle, mid-conversation.
+		checkFeedback(checked ? "uncheck" : "check");
+		// The confirmation you can feel without looking at the screen, which
+		// is how this gets used: one hand, in an aisle, mid-conversation.
+		checkFeedback(checked ? "uncheck" : "check");
 	}
 
 	function startEdit(itemId: string, currentText: string): void {
@@ -325,7 +423,17 @@
 		<header class="head">
 			<span class="eyebrow">— list</span>
 			<h1>{list.name}</h1>
-			<SyncStatus status={syncStatus} />
+			<div class="head-row">
+				<SyncStatus status={syncStatus} />
+				<button
+					class="sound-toggle"
+					onclick={toggleSound}
+					aria-pressed={sound}
+					title={sound ? "check-off sound on" : "check-off sound off"}
+				>
+					{sound ? "🔊" : "🔇"}
+				</button>
+			</div>
 		</header>
 
 		{#if forkSourceName}
@@ -347,6 +455,39 @@
 			{myLabel}
 			onDone={(id) => session?.completeReminder(id)}
 		/>
+
+		<!-- One input, reused for every item: a per-row file input would mean a
+		     hidden element per item for a control used once in a while. -->
+		<input
+			class="photo-input"
+			type="file"
+			accept="image/*"
+			capture="environment"
+			bind:this={photoInput}
+			onchange={(e) => void onPhotoChosen(e)}
+			aria-hidden="true"
+			tabindex="-1"
+		/>
+
+		{#if suggestions.length > 0}
+			<div class="usual">
+				<button class="usual-head" onclick={() => (showUsual = !showUsual)}>
+					<span class="usual-title">— the usual</span>
+					<span class="usual-count">{showUsual ? "hide" : `${suggestions.length} suggestions`}</span>
+				</button>
+				{#if showUsual}
+					<div class="usual-chips">
+						{#each suggestions as suggestion (suggestion.text)}
+							<button class="usual-chip" onclick={() => addSuggestion(suggestion.text)}>
+								{suggestion.text}
+								<span class="usual-freq">×{suggestion.count}</span>
+							</button>
+						{/each}
+					</div>
+					<button class="btn btn-ghost btn-small" onclick={addAllSuggestions}>add all</button>
+				{/if}
+			</div>
+		{/if}
 
 		<form
 			class="add-item"
@@ -443,6 +584,24 @@
 								<span class="added-by">added by {item.addedBy}</span>
 							</div>
 						{/if}
+						{#if item.photo}
+							<button
+								class="item-photo"
+								onclick={() => (viewingPhoto = { id: item.id, text: item.text, photo: item.photo })}
+								aria-label={`Photo of ${item.text}`}
+							>
+								<img src={item.photo} alt="" />
+							</button>
+						{:else}
+							<button
+								class="photo-toggle"
+								onclick={() => pickPhoto(item.id)}
+								aria-label={`Add a photo to ${item.text}`}
+								title="add a photo"
+							>
+								📷
+							</button>
+						{/if}
 						<button
 							class="remind-toggle"
 							onclick={() => (remindingItem = { id: item.id, text: item.text })}
@@ -489,9 +648,42 @@
 			/>
 		{/if}
 
+		{#if photoError}
+			<p class="scan-missed">{photoError}</p>
+		{/if}
+
+		{#if viewingPhoto}
+			<div
+				class="photo-overlay"
+				role="dialog"
+				aria-label={`Photo of ${viewingPhoto.text}`}
+				aria-modal="true"
+			>
+				<div class="photo-panel card">
+					<img src={viewingPhoto.photo} alt={`Photo of ${viewingPhoto.text}`} />
+					<p class="photo-name">{viewingPhoto.text}</p>
+					<div class="photo-actions">
+						<button class="btn btn-ghost btn-small" onclick={() => removePhoto(viewingPhoto!.id)}>
+							remove photo
+						</button>
+						<button class="btn btn-small" onclick={() => (viewingPhoto = null)}>close</button>
+					</div>
+				</div>
+			</div>
+		{/if}
+
 		<div class="list-actions">
 			<button class="btn btn-ghost" onclick={() => (showActivity = !showActivity)}>activity</button>
-			<button class="btn btn-ghost" onclick={fork}>fork this list</button>
+			<button class="btn btn-ghost" onclick={fork}>fork</button>
+			<button class="btn btn-ghost" onclick={() => void shareAsImage()} disabled={shareState === "working"}>
+				{shareState === "working"
+					? "drawing…"
+					: shareState === "done"
+						? "shared ✓"
+						: shareState === "failed"
+							? "no share"
+							: "share"}
+			</button>
 		</div>
 
 		{#if showActivity}
@@ -546,14 +738,38 @@
 	h1 {
 		font-size: clamp(2.4rem, 11vw, 3.6rem);
 	}
+	/* The text input gets a row to itself, with the capture buttons under it:
+	   squeezed between two icon buttons on a phone it was down to a few
+	   characters of visible text. */
 	.add-item {
-		display: flex;
-		gap: 0.6rem;
+		display: grid;
+		/* auto auto 1fr so the capture buttons stay button-sized and "add"
+		   takes the slack; the input spans all three regardless. */
+		grid-template-columns: auto auto 1fr;
+		grid-template-areas:
+			"field field field"
+			"voice scan add";
+		gap: 0.5rem;
 		margin-bottom: 1.5rem;
 	}
 	.add-item .input {
-		flex: 1;
+		grid-area: field;
 		min-width: 0;
+	}
+	.add-item .scan-btn:nth-of-type(1) {
+		grid-area: voice;
+	}
+	.add-item .scan-btn:nth-of-type(2) {
+		grid-area: scan;
+	}
+	.add-item button[type="submit"] {
+		grid-area: add;
+	}
+	@media (min-width: 520px) {
+		.add-item {
+			grid-template-columns: 1fr auto auto auto;
+			grid-template-areas: "field voice scan add";
+		}
 	}
 	.scan-btn {
 		flex-shrink: 0;
@@ -672,11 +888,13 @@
 	}
 	.list-actions {
 		display: flex;
-		gap: 0.6rem;
+		gap: 0.5rem;
 		margin-top: 1.5rem;
 	}
 	.list-actions .btn {
 		flex: 1;
+		padding-inline: 0.75rem;
+		white-space: nowrap;
 	}
 	.fork-banner {
 		padding: 1.15rem 1.25rem;
@@ -709,6 +927,161 @@
 	}
 	.remove:hover {
 		color: var(--color-primary);
+	}
+	.head-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	.sound-toggle {
+		background: none;
+		border: none;
+		padding: 0.2rem;
+		font-size: 0.95rem;
+		line-height: 1;
+		cursor: pointer;
+		opacity: 0.6;
+	}
+	.sound-toggle[aria-pressed="true"] {
+		opacity: 1;
+	}
+	.photo-input {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		opacity: 0;
+		pointer-events: none;
+	}
+	/* Suggestions are folded away by default: they're an offer, and an open
+	   panel of them competes with the list itself for attention. */
+	.usual {
+		margin-bottom: 1.25rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+	}
+	.usual-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		width: 100%;
+		padding: 0.6rem 0.9rem;
+		background: var(--color-yellow);
+		border: var(--border-thin);
+		border-radius: var(--radius-pill);
+		box-shadow: var(--shadow-sm);
+		cursor: pointer;
+	}
+	.usual-title {
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
+		font-weight: 600;
+	}
+	.usual-count {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		opacity: 0.7;
+	}
+	.usual-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+	}
+	.usual-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		padding: 0.45rem 0.85rem;
+		background: var(--bg-surface);
+		border: var(--border-thin);
+		border-radius: var(--radius-pill);
+		font-family: var(--font);
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		cursor: pointer;
+		transition:
+			transform 0.1s ease,
+			box-shadow 0.1s ease;
+	}
+	.usual-chip:hover {
+		transform: translate(-2px, -2px);
+		box-shadow: var(--shadow-sm);
+	}
+	.usual-freq {
+		font-family: var(--font-mono);
+		font-size: 0.66rem;
+		opacity: 0.55;
+	}
+	/* The thumbnail replaces the camera button once there's a photo: the row
+	   shows the thing itself rather than an icon standing in for it. */
+	.item-photo {
+		flex-shrink: 0;
+		width: 34px;
+		height: 34px;
+		padding: 0;
+		border: var(--border-thin);
+		border-radius: var(--radius-sm);
+		overflow: hidden;
+		background: var(--bg-page);
+		cursor: pointer;
+	}
+	.item-photo img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+	.photo-toggle {
+		flex-shrink: 0;
+		background: none;
+		border: none;
+		padding: 0.25rem;
+		cursor: pointer;
+		opacity: 0.35;
+		font-size: 0.95rem;
+		line-height: 1;
+	}
+	.photo-toggle:hover {
+		opacity: 1;
+	}
+	.photo-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(17, 17, 17, 0.7);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 1.25rem;
+		z-index: 100;
+	}
+	.photo-panel {
+		width: 100%;
+		max-width: 420px;
+		padding: 1rem;
+		background: var(--bg-surface);
+		box-shadow: var(--shadow-xl);
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+	.photo-panel img {
+		width: 100%;
+		border: var(--border);
+		border-radius: var(--radius-sm);
+		display: block;
+	}
+	.photo-name {
+		font-family: var(--font-display);
+		font-size: 1.15rem;
+		text-transform: lowercase;
+		color: var(--text-primary);
+	}
+	.photo-actions {
+		display: flex;
+		gap: 0.5rem;
+		justify-content: flex-end;
 	}
 	.remind-toggle {
 		flex-shrink: 0;

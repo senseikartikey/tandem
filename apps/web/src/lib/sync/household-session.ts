@@ -32,6 +32,9 @@ export interface HouseholdSession {
   // become real Y.Text ops; a wrapper that took a whole string and diffed it
   // itself would just be reinventing what the binding library already does.
   getItemNoteText(listId: string, itemId: string): Y.Text;
+  // Pass "" to clear. The photo is a downscaled data URL living in the
+  // document itself -- see $lib/photo for why it has to be small.
+  setItemPhoto(listId: string, itemId: string, photo: string): void;
   createNote(title: string): string;
   renameNote(noteId: string, title: string): void;
   archiveNote(noteId: string): void;
@@ -138,6 +141,10 @@ function wrapSession(roomId: string, sync: Awaited<ReturnType<typeof connectHous
     reorderItem: (listId, itemId, beforeItemId, afterItemId) =>
       schema.reorderItem(sync.doc, listId, itemId, beforeItemId, afterItemId, getDeviceLabel()),
     getItemNoteText: (listId, itemId) => schema.getItemNoteText(sync.doc, listId, itemId),
+    setItemPhoto: (listId, itemId, photo) => {
+      schema.setItemPhoto(sync.doc, listId, itemId, photo, getDeviceLabel());
+      pingTouch(itemId);
+    },
     createNote: (title) => schema.createNote(sync.doc, title, getDeviceLabel()),
     renameNote: (noteId, title) => schema.renameNote(sync.doc, noteId, title, getDeviceLabel()),
     archiveNote: (noteId) => schema.archiveNote(sync.doc, noteId, getDeviceLabel()),

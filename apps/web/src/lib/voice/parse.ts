@@ -88,8 +88,9 @@ const TRAILING_PUNCTUATION = /[\s.,;:!?]+$/;
 const LEADING_PUNCTUATION = /^[\s.,;:!?'"-]+/;
 
 // A clause with no letters at all ("...", "2") is noise from a dropped word,
-// not an item worth adding.
-const HAS_LETTERS = /[a-z]/i;
+// not an item worth adding. Unicode-aware, so a transcript in a non-Latin
+// script isn't thrown away as "no letters".
+const HAS_LETTERS = /\p{L}/u;
 
 // Whole clauses that are only ever filler, whatever else was heard.
 const FILLER_ONLY = new Set([
@@ -180,7 +181,7 @@ function stripTrailing(clause: string): string {
  * via CSS, so lowercasing the stored text here would throw away real
  * information (brand names, initials) for no visual gain.
  */
-export function parseSpokenItems(transcript: string): string[] {
+export function parseSpokenItems(transcript: string, englishRules = true): string[] {
 	if (!transcript) return [];
 
 	const clauses = transcript.replace(/\s+/g, " ").trim().split(CLAUSE_SEPARATORS);
@@ -190,12 +191,19 @@ export function parseSpokenItems(transcript: string): string[] {
 
 	for (const clause of clauses) {
 		let text = clause.replace(LEADING_PUNCTUATION, "");
-		text = stripPreamble(text);
-		text = stripTrailing(text).replace(LEADING_PUNCTUATION, "").trim();
+		// Everything below the clause split is English scaffolding ("we're out
+		// of", "can you grab"). Applied to Hindi or Gujarati it would strip
+		// words that merely resemble it, so other languages get the split and
+		// the tidying, and keep their own words.
+		if (englishRules) {
+			text = stripPreamble(text);
+			text = stripTrailing(text);
+		}
+		text = text.replace(LEADING_PUNCTUATION, "").replace(TRAILING_PUNCTUATION, "").trim();
 
 		if (!text || !HAS_LETTERS.test(text)) continue;
 		const lower = text.toLowerCase();
-		if (FILLER_ONLY.has(lower) || BARE_QUANTIFIERS.has(lower)) continue;
+		if (englishRules && (FILLER_ONLY.has(lower) || BARE_QUANTIFIERS.has(lower))) continue;
 
 		// Case-insensitive dedupe: saying "milk" twice in one breath is a
 		// stutter, not a request for two entries.

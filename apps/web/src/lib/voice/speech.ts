@@ -16,6 +16,8 @@
 // it has an on-device model installed. Nothing is ever sent to a tandem
 // server either way, and the UI says which engine is in use.
 
+import { voiceLanguage } from "./language.js";
+
 interface SpeechRecognitionAlternativeLike {
 	transcript: string;
 }
@@ -79,7 +81,7 @@ export function startBrowserSpeech(handlers: BrowserSpeechHandlers): BrowserSpee
 	recognition.continuous = true;
 	recognition.interimResults = true;
 	recognition.maxAlternatives = 1;
-	recognition.lang = navigator.language || "en-US";
+	recognition.lang = voiceLanguage();
 	// Chrome 138+ honours this as "do not send audio off-device". Older
 	// engines ignore the property entirely, which is why it's set rather
 	// than required.

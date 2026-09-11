@@ -12,7 +12,19 @@
 		startBrowserSpeech,
 		type BrowserSpeechSession,
 	} from "$lib/voice/speech.js";
-	import { loadTranscriber, loadedTranscriber, transcribe } from "$lib/voice/transcriber.js";
+	import {
+		loadTranscriber,
+		loadedTranscriber,
+		localModelSupports,
+		transcribe,
+	} from "$lib/voice/transcriber.js";
+	import {
+		setVoiceLanguage,
+		usesEnglishRules,
+		voiceLanguage,
+		voiceLanguageLabel,
+		VOICE_LANGUAGES,
+	} from "$lib/voice/language.js";
 
 	let { onItems, onClose }: { onItems: (texts: string[]) => void; onClose: () => void } = $props();
 
@@ -41,6 +53,8 @@
 	let transcript = $state("");
 	let interim = $state("");
 	let drafts = $state<string[]>([]);
+	let language = $state(voiceLanguage());
+	let showLanguages = $state(false);
 
 	let speech: BrowserSpeechSession | null = null;
 	let recording: Recording | null = null;
@@ -72,8 +86,23 @@
 
 	function finalize(text: string): void {
 		transcript = text;
-		drafts = parseSpokenItems(text);
+		// The sentence-shaped rules are English-only; other languages get the
+		// clause split and nothing that would mangle their words.
+		drafts = parseSpokenItems(text, usesEnglishRules(language));
 		phase = "review";
+	}
+
+	// Changing language restarts the recognizer, which can only be told its
+	// language before it starts listening.
+	function chooseLanguage(tag: string): void {
+		language = tag;
+		setVoiceLanguage(tag);
+		showLanguages = false;
+		interim = "";
+		if (engine !== "browser") return;
+		speech?.abort();
+		speech = null;
+		beginBrowser();
 	}
 
 	// --- browser engine ---------------------------------------------------
@@ -213,7 +242,7 @@
 	}
 
 	function reparse(): void {
-		drafts = parseSpokenItems(transcript);
+		drafts = parseSpokenItems(transcript, usesEnglishRules(language));
 	}
 
 	function updateDraft(index: number, text: string): void {
@@ -267,10 +296,33 @@
 				<p class="voice-hint"><span class="voice-countdown">{secondsLeft}s left</span></p>
 			{/if}
 			<button class="btn btn-ink btn-block" onclick={finish}>done talking</button>
+
+			<button class="language-row" onclick={() => (showLanguages = !showLanguages)}>
+				🌐 {voiceLanguageLabel(language)} · change
+			</button>
+			{#if showLanguages}
+				<div class="language-grid">
+					{#each VOICE_LANGUAGES as option (option.tag)}
+						<button
+							class="language-chip"
+							class:selected={option.tag === language}
+							onclick={() => chooseLanguage(option.tag)}
+						>
+							{option.label}
+						</button>
+					{/each}
+				</div>
+			{/if}
+
 			<p class="voice-note">
-				{engine === "browser"
-					? "using your device's own dictation — no audio goes to tandem"
-					: "using the local speech model — audio never leaves this device"}
+				{#if engine === "browser"}
+					using your device's own dictation — no audio goes to tandem
+				{:else if localModelSupports(language)}
+					using the local speech model — audio never leaves this device
+				{:else}
+					the offline model only understands english, so {voiceLanguageLabel(language)} needs a
+					browser with its own dictation
+				{/if}
 			</p>
 		{:else if phase === "thinking"}
 			<p class="voice-hint">working out what you said…</p>
@@ -415,6 +467,42 @@
 	}
 	.voice-countdown {
 		opacity: 0.7;
+	}
+	/* The language sits under the mic rather than in a settings screen: the
+	   moment you notice you want it is the moment you're about to speak. */
+	.language-row {
+		align-self: center;
+		background: none;
+		border: none;
+		padding: 0.2rem 0;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		color: var(--text-secondary);
+		text-decoration: underline;
+		cursor: pointer;
+	}
+	.language-row:hover {
+		color: var(--text-primary);
+	}
+	.language-grid {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+		justify-content: center;
+	}
+	.language-chip {
+		padding: 0.35rem 0.7rem;
+		border: var(--border-thin);
+		border-radius: var(--radius-pill);
+		background: var(--bg-page);
+		font-family: var(--font);
+		font-size: 0.8rem;
+		color: var(--text-primary);
+		cursor: pointer;
+	}
+	.language-chip.selected {
+		background: var(--color-yellow);
+		font-weight: 700;
 	}
 	.voice-note {
 		text-align: center;

@@ -24,6 +24,13 @@ const REMINDERS_KEY = "reminders";
 // snapshot.
 const NOTE_PREVIEW_LENGTH = 160;
 
+// A whole room is capped server-side (MAX_ROOM_BYTES, 5MB by default), and
+// every device holds the entire document in memory, so an unbounded photo is
+// a way to break a household permanently. Clients are expected to downscale
+// to a thumbnail; this is the backstop that keeps a mistake from becoming a
+// corrupted room.
+export const MAX_ITEM_PHOTO_BYTES = 64 * 1024;
+
 export interface ListSnapshot {
   id: string;
   name: string;
@@ -44,6 +51,13 @@ export interface ListSnapshot {
 export interface ItemSnapshot {
   id: string;
   text: string;
+  // A small inline JPEG data URL, or "" for none -- "get *this* brand, not
+  // the one you came back with last time". Stored in the document rather
+  // than uploaded anywhere: there is no file server in this architecture,
+  // and a photo that lives in the CRDT syncs, works offline and survives
+  // the same way every other field does. That only holds because callers
+  // downscale hard before writing (see MAX_ITEM_PHOTO_BYTES).
+  photo: string;
   // Read-only string snapshot of the live Y.Text below -- for display/list
   // rendering only. Editing must go through getItemNoteText()'s actual
   // Y.Text handle, never by writing this field back (there's no setter on
@@ -354,6 +368,7 @@ export function forkList(doc: Y.Doc, sourceListId: string, name: string, actorLa
       // item rather than copy it. Matches every other field's copy-not-link
       // semantics (see this function's module comment).
       item.set("note", new Y.Text(sourceNote instanceof Y.Text ? sourceNote.toString() : ""));
+      item.set("photo", (source.get("photo") as string | undefined) ?? "");
       // Checked state carries over -- a fork is a snapshot of the list as
       // it stood, not a fresh blank copy.
       item.set("checked", source.get("checked") as boolean);
@@ -500,6 +515,7 @@ export function addItem(doc: Y.Doc, listId: string, text: string, addedBy: strin
     item.set("id", id);
     item.set("text", text);
     item.set("note", new Y.Text());
+    item.set("photo", "");
     item.set("checked", false);
     item.set("checkedBy", null);
     item.set("copiedInFork", false);
@@ -571,6 +587,32 @@ export function setItemChecked(
       itemText,
       previousText: null,
     });
+  });
+}
+
+/**
+ * Attaches (or with "", removes) a photo.
+ *
+ * Deliberately emits no activity entry, for the same reason note keystrokes
+ * don't: the feed is a log of what happened to the *list*, and an attachment
+ * being swapped is a property of one item, already visible on it.
+ */
+export function setItemPhoto(
+  doc: Y.Doc,
+  listId: string,
+  itemId: string,
+  photo: string,
+  _actorLabel: string,
+): void {
+  if (photo.length > MAX_ITEM_PHOTO_BYTES) {
+    throw new Error(
+      `Item photo is ${photo.length} bytes; downscale below ${MAX_ITEM_PHOTO_BYTES} before storing`,
+    );
+  }
+  const item = getItemRecord(doc, listId, itemId);
+  doc.transact(() => {
+    item.set("photo", photo);
+    item.set("updatedAt", Date.now());
   });
 }
 
@@ -829,6 +871,7 @@ function readItem(record: YRecord): ItemSnapshot {
     id: record.get("id") as string,
     text: record.get("text") as string,
     note: noteField instanceof Y.Text ? noteField.toString() : "",
+    photo: (record.get("photo") as string | undefined) ?? "",
     checked: record.get("checked") as boolean,
     checkedBy: (record.get("checkedBy") as string | null) ?? null,
     copiedInFork: (record.get("copiedInFork") as boolean | undefined) ?? false,
