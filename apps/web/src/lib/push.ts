@@ -147,28 +147,6 @@ export async function refreshPushSubscription(roomId: string, label: string): Pr
 	}
 }
 
-/**
- * Asks the server to push to this very device.
- *
- * The only way to answer "is this actually working?" -- an undelivered
- * reminder looks the same whether the subscription is dead, the platform
- * dropped it, or nobody sent one.
- */
-export async function sendTestPush(): Promise<{ sent: boolean; reason?: string }> {
-	const endpoint = pushEndpoint();
-	if (!endpoint) return { sent: false, reason: "this device has no subscription" };
-	try {
-		const response = await fetch(`${HTTP_BASE}/api/push/test`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ endpoint }),
-		});
-		return (await response.json()) as { sent: boolean; reason?: string };
-	} catch (error) {
-		return { sent: false, reason: error instanceof Error ? error.message : "network error" };
-	}
-}
-
 export interface ReminderPushRequest {
 	roomId: string;
 	toLabel: string | null;

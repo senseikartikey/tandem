@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enablePush, pushState, sendTestPush, type PushState } from "$lib/push.js";
+	import { enablePush, pushState, type PushState } from "$lib/push.js";
 	import { getDeviceLabel } from "$lib/local-households";
 
 	let { roomId }: { roomId: string } = $props();
@@ -11,26 +11,13 @@
 	// precisely when a notification is pointless.
 	let status = $state<PushState>(pushState());
 	let busy = $state(false);
-	let tested = $state<"idle" | "sent" | "failed">("idle");
-	// Kept verbatim from the push service where possible: "410 gone" or a
-	// rejected VAPID token are actionable, "it didn't work" is not.
-	let failure = $state("");
 
 	async function turnOn(): Promise<void> {
 		busy = true;
+		// enablePush only reports "on" once the server has confirmed it stored
+		// the subscription, so there's nothing further to verify here.
 		status = await enablePush(roomId, getDeviceLabel());
 		busy = false;
-		// Proving it immediately beats asking someone to go and test it: if
-		// this doesn't arrive, they find out now rather than when a reminder
-		// they were counting on never showed up.
-		if (status === "on") void test();
-	}
-
-	async function test(): Promise<void> {
-		tested = "idle";
-		const result = await sendTestPush();
-		tested = result.sent ? "sent" : "failed";
-		failure = result.reason ?? "";
 	}
 </script>
 
@@ -40,16 +27,7 @@
 	<div class="copy">
 		{#if status === "on"}
 			<span class="title">notifications on</span>
-			<span class="detail">
-				{#if tested === "sent"}
-					test sent — it should appear even with tandem closed.
-				{:else if tested === "failed"}
-					couldn't deliver a test to this device{failure ? ` — ${failure}` : ""}. reminders
-					still reach you inside the app.
-				{:else}
-					this device is nudged when someone reminds you.
-				{/if}
-			</span>
+			<span class="detail">this device is nudged when someone reminds you.</span>
 		{:else if status === "needs-install"}
 			<span class="title">add tandem to your home screen</span>
 			<span class="detail">
@@ -81,8 +59,6 @@
 		<button class="btn btn-ink btn-small" onclick={() => void turnOn()} disabled={busy}>
 			{busy ? "asking…" : "turn on"}
 		</button>
-	{:else if status === "on"}
-		<button class="btn btn-ghost btn-small" onclick={() => void test()}>test</button>
 	{/if}
 </div>
 

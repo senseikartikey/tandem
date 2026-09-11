@@ -281,6 +281,10 @@
 			<span class="logo-mark">v0.1</span>
 		</a>
 		<div class="topbar-links">
+			<!-- Secondary links are desktop-only. On a phone this is the top of
+			     an app someone already uses, and no app puts "how it works" and
+			     a source-code link in its title bar; both live in the footer,
+			     which is where you go looking for them. -->
 			<button class="nav-link" onclick={() => scrollToPanel("how-it-works")}>how it works</button>
 			<a
 				class="nav-link"
@@ -288,11 +292,46 @@
 				target="_blank"
 				rel="noopener">github ↗</a
 			>
-			<button class="btn btn-ink btn-small" onclick={() => scrollToPanel("create-panel")}>
-				start a list
-			</button>
+			{#if households.length > 0}
+				<a class="btn btn-ink btn-small" href={`/h/${households[0].roomId}`}>
+					open {households[0].name}
+				</a>
+			{:else}
+				<button class="btn btn-ink btn-small" onclick={() => scrollToPanel("create-panel")}>
+					start a list
+				</button>
+			{/if}
 		</div>
 	</nav>
+
+	<!-- Someone who already has a household is not a visitor to be pitched at:
+	     they came back to open their list. Their households sit directly under
+	     the bar, above the poster, because burying them under a full marketing
+	     page reads as "my household is gone" -- which is exactly what a tester
+	     reported before this existed. -->
+	{#if households.length > 0}
+		<section class="returning">
+			<span class="eyebrow">— jump back in</span>
+			<ul class="returning-list">
+				{#each households as h (h.roomId)}
+					<li class="returning-row">
+						<a class="returning-card" href={`/h/${h.roomId}`}>
+							<span class="returning-name">{h.name}</span>
+							<span class="returning-go" aria-hidden="true">→</span>
+						</a>
+						<button
+							class="returning-remove"
+							onclick={() => removeHousehold(h.roomId)}
+							aria-label={`Remove ${h.name} from this device`}
+							title="remove from this device"
+						>
+							✕
+						</button>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
 
 	<section class="hero">
 		<span class="sticker sticker-1" style="--tilt: -12deg" aria-hidden="true">
@@ -431,27 +470,6 @@
 			<YourName />
 		</div>
 
-		{#if households.length > 0}
-			<div class="households">
-				<span class="eyebrow">your households</span>
-				<ul class="household-list">
-					{#each households as h (h.roomId)}
-						<li class="card household-row">
-							<a class="household-card" href={`/h/${h.roomId}`}>{h.name}</a>
-							<button
-								class="remove"
-								onclick={() => removeHousehold(h.roomId)}
-								aria-label={`Remove ${h.name} from this device`}
-								title="remove from this device"
-							>
-								✕
-							</button>
-						</li>
-					{/each}
-				</ul>
-			</div>
-		{/if}
-
 		<div class="forms-grid">
 			<div class="form-panel form-create" id="create-panel">
 				<span class="form-num">01</span>
@@ -583,6 +601,73 @@
 	}
 	.nav-link:hover {
 		border-bottom-color: var(--text-primary);
+	}
+
+	/* The returning-user strip. Cream against the poster yellow so it reads as
+	   a different kind of thing -- your stuff, not the pitch. */
+	.returning {
+		padding: 1.25rem;
+		background: var(--bg-page);
+		border-bottom: var(--border);
+	}
+	.returning-list {
+		list-style: none;
+		padding: 0;
+		margin: 0.6rem auto 0;
+		max-width: 1160px;
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 0.6rem;
+	}
+	.returning-row {
+		display: flex;
+		align-items: center;
+		background: var(--bg-surface);
+		border: var(--border);
+		border-radius: var(--radius-md);
+		box-shadow: var(--shadow-sm);
+		transition:
+			transform 0.12s ease,
+			box-shadow 0.12s ease;
+	}
+	.returning-row:hover {
+		transform: translate(-2px, -2px);
+		box-shadow: var(--shadow-md);
+	}
+	.returning-card {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		padding: 0.9rem 0.5rem 0.9rem 1.1rem;
+		text-decoration: none;
+		color: var(--text-primary);
+	}
+	.returning-name {
+		font-family: var(--font-display);
+		font-size: 1.15rem;
+		letter-spacing: -0.02em;
+		text-transform: lowercase;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.returning-go {
+		font-size: 1.1rem;
+	}
+	.returning-remove {
+		flex-shrink: 0;
+		background: none;
+		border: none;
+		color: var(--text-secondary);
+		padding: 0.75rem 0.9rem;
+		font-weight: 700;
+		cursor: pointer;
+	}
+	.returning-remove:hover {
+		color: var(--color-primary);
 	}
 
 	/* --- Hero: centred poster type, stickers pinned to the corners --- */
@@ -1046,61 +1131,12 @@
 		background: var(--bg-page);
 	}
 	.you-panel,
-	.households,
 	.forms-grid {
 		max-width: 1160px;
 		margin: 0 auto;
 	}
 	.you-panel {
 		margin-bottom: 0.5rem;
-	}
-	.households {
-		margin-bottom: 2rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-	.household-list {
-		list-style: none;
-		padding: 0;
-		margin: 0;
-		display: grid;
-		grid-template-columns: 1fr;
-		gap: 0.75rem;
-	}
-	.household-row {
-		display: flex;
-		align-items: center;
-		padding: 0.35rem 0.35rem 0.35rem 1.15rem;
-		transition:
-			transform 0.12s ease,
-			box-shadow 0.12s ease;
-	}
-	.household-row:hover {
-		transform: translate(-2px, -2px);
-		box-shadow: var(--shadow-lg);
-	}
-	.household-card {
-		flex: 1;
-		padding: 0.8rem 0;
-		text-decoration: none;
-		font-family: var(--font-display);
-		font-size: 1.1rem;
-		text-transform: lowercase;
-		letter-spacing: -0.02em;
-		color: var(--text-primary);
-	}
-	.household-row .remove {
-		flex-shrink: 0;
-		background: none;
-		border: none;
-		color: var(--text-secondary);
-		padding: 0.6rem 0.75rem;
-		font-weight: 700;
-		cursor: pointer;
-	}
-	.household-row .remove:hover {
-		color: var(--color-primary);
 	}
 
 	.forms-grid {
@@ -1206,6 +1242,15 @@
 		}
 	}
 
+	@media (max-width: 700px) {
+		.nav-link {
+			display: none;
+		}
+		.topbar {
+			padding-block: 0.85rem;
+		}
+	}
+
 	/* Ragged-width pills read as sloppy once they stack; on phones both
 	   hero CTAs take the full column. */
 	@media (max-width: 560px) {
@@ -1215,6 +1260,10 @@
 	}
 
 	@media (min-width: 700px) {
+		.returning-list {
+			grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+		}
+		.returning,
 		.topbar,
 		.hero,
 		.how,
@@ -1227,8 +1276,7 @@
 		.steps {
 			grid-template-columns: repeat(2, 1fr);
 		}
-		.feature-grid,
-		.household-list {
+		.feature-grid {
 			grid-template-columns: repeat(2, 1fr);
 		}
 		.forms-grid {
@@ -1263,9 +1311,6 @@
 			transform: translate(-3px, 17px);
 		}
 		.feature-grid {
-			grid-template-columns: repeat(3, 1fr);
-		}
-		.household-list {
 			grid-template-columns: repeat(3, 1fr);
 		}
 	}

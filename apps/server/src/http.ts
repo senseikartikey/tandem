@@ -198,31 +198,6 @@ export async function handleHttpRequest(
     return;
   }
 
-  // Proving a device's own setup, which is otherwise unfalsifiable: a
-  // reminder that never arrives looks identical whether the subscription is
-  // broken, the platform dropped it, or nobody sent one.
-  if (req.method === "POST" && url.pathname === "/api/push/test") {
-    const push = context.push;
-    if (!push?.configured) {
-      json(res, 503, { error: "push is not configured on this server" });
-      return;
-    }
-    let endpoint: string | undefined;
-    try {
-      endpoint = (JSON.parse(await readBody(req)) as { endpoint?: string }).endpoint;
-    } catch {
-      json(res, 400, { error: "invalid request body" });
-      return;
-    }
-    if (!endpoint) {
-      json(res, 400, { error: "endpoint is required" });
-      return;
-    }
-    const result = await push.sendTest(endpoint);
-    json(res, result.sent ? 200 : 502, result);
-    return;
-  }
-
   if (req.method === "POST" && url.pathname === "/api/push/remind") {
     const push = context.push;
     if (!push?.configured) {
